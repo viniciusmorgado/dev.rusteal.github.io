@@ -1,0 +1,5 @@
+[book]
+authors = ["Vinicius Donatto Morgado"]
+language = "en"
+src = "src"
+title = "Rusteal Developer Handbook"
