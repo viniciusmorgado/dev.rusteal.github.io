@@ -92,3 +92,4 @@ The levels are played headless (`UnrealEditor <project> -nullrhi -ExecCmds="py t
 | Handheld AR | Arrays of structs as properties (`UeArray<OwnedStruct<T>>`), the struct in the array finalized before the one holding it; `#[uenum]`s as `#[udelegate]` parameters. |
 | Handheld AR | `#[uproperty(BindWidgetAnim)]` and `Transient`. |
 | Handheld AR | Rust `bool` properties and parameters are native bools: they were one-bit fields, and a `false` written by Python or a Blueprint left the byte's other bits, which Rust read as `true`. |
+| Intro To Unreal | Features: plugin templates with a `[feature]` table, `rusteal new --feature`, templates bundling features, plugin templates carrying content. |
