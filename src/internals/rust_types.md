@@ -33,6 +33,10 @@ Every step calls into the plugin through the reify table of the API table (`Rust
 
 Properties of the enum's type are `FEnumProperty`s over a byte, which is also how the macros pass enums to and from `#[ufunction]`s: the parameter is read as the enum's representation and turned back into the Rust enum with `from_i64`. A compile-time check refuses an enum stored on more than one byte.
 
+## Booleans
+
+A `bool` property or parameter is an `FBoolProperty` made a native bool (`SetBoolSize(sizeof(bool), true)`), the kind UHT makes for a C++ `bool`: it takes a whole byte, written as 0 or 1. `FBoolProperty`'s constructor makes a one-bit field instead, whose writes change only that bit; Rust reads the byte, so the bits left in a parameter buffer made a `false` from Python or a Blueprint arrive as `true`.
+
 ## Hot reload
 
 A hot reload loads a new library and registers everything again. Classes are replaced; structs and enums are not: `create_struct` and `create_enum` find the existing object by name and return it, and warn when its fields or values changed, which takes an editor restart.

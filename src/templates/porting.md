@@ -65,7 +65,10 @@ Then, in a headless editor, each Blueprint is turned into a child of its Rust cl
 2. Remove its graphs (`BlueprintEditorLibrary.list_graph_names` and `remove_graph`), its event dispatchers (`remove_event_dispatcher`), its now unused variables (`remove_unused_variables`) and its components (`SubobjectDataSubsystem.delete_subobjects`).
 3. Reparent it (`reparent_blueprint`) and compile.
 4. Set the recorded values on the inherited components of the same names, and the assets on the class defaults, by their Unreal names: editor Python wraps a Rust class as its nearest engine class, so `get_editor_property("MoveAction")` works where `move_action` does not.
-5. Compile and save; resave the levels that place the Blueprints.
+5. Set again the values a layout gives the widgets placed in it (`find_object` of `<WidgetBlueprint>:WidgetTree.<Name>`): they were stored under the Blueprint variables the reparent removed. Python wraps a `#[uenum]` without its `E` (`EIconType` is `unreal.IconType`), and `unreal.IconType.cast(2)` makes a value from an index.
+6. Compile and save; resave the levels that place the Blueprints.
+
+A data table whose row structure is a Blueprint struct moves to the `#[ustruct]` that replaces it: export its rows with `DataTableFunctionLibrary.export_data_table_to_json_string` before the port, then `fill_data_table_from_json_string(table, json, rust_struct)`, which also makes the Rust struct the table's row structure. The JSON names the fields as the Blueprint struct did, so the Rust fields take those names (`name = "BGColor"`).
 
 A variable the graphs left still use (an Anim Blueprint's AnimGraph reads the hand's pose alphas) clashes with the Rust property of the same name when the Blueprint is reparented, and the compiler renames it (`PoseAlphaGrasp_0`). In a second editor session, `replace_variable_references` moves its references to the inherited property and `remove_unused_variables` deletes it. It has to be a new session: until then Python does not see the properties the reparented class gained.
 
@@ -83,3 +86,7 @@ The levels are played headless (`UnrealEditor <project> -nullrhi -ExecCmds="py t
 | Virtual Reality | `#[uenum]`; Unreal enums as `#[ufunction]` parameters and return values; struct return values for overrides (`ModifyRaw`). |
 | Virtual Reality | `#[uproperty(BindWidget)]`. |
 | Virtual Reality | Enum values from third-party headers (OpenXR's blend modes), getters for properties with only a `BlueprintSetter` (`MotionSource`), and no clippy on the generated bindings. |
+| Handheld AR | Classes reached from exported functions and properties are exported, without functions, even when their module exports no API (`UARBasicLightEstimate`, which `GetCurrentLightEstimate` returns). |
+| Handheld AR | Arrays of structs as properties (`UeArray<OwnedStruct<T>>`), the struct in the array finalized before the one holding it; `#[uenum]`s as `#[udelegate]` parameters. |
+| Handheld AR | `#[uproperty(BindWidgetAnim)]` and `Transient`. |
+| Handheld AR | Rust `bool` properties and parameters are native bools: they were one-bit fields, and a `false` written by Python or a Blueprint left the byte's other bits, which Rust read as `true`. |
