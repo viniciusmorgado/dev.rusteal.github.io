@@ -20,7 +20,7 @@ Each macro submits a registration with the `inventory` crate, which collects the
 3. **Structs** are created, then given their properties, then finalized (linked, sized).
 4. **Class properties and components** are added.
 5. **Functions** of every class.
-6. **Classes are finalized**, then their `#[class_defaults]` run on the class default object.
+6. **Classes are finalized**, then their `#[class_defaults]` run on the class default object. Each registration lists the type ids of its parent and of its components' classes (`depends_on`), and this step runs in an order where those come first: a class's default object creates its components from their classes' default objects, which must be finalized and set up by then.
 
 Every step calls into the plugin through the reify table of the API table (`RustealReifyApi`): `create_enum`, `create_struct`, `create_class`, `add_property`, `add_function`... The objects go in the library's package: `/Script/Rusteal` for the game, `/Script/<Plugin>` for a plugin's library.
 
