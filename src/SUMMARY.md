@@ -5,4 +5,5 @@
 - [Architecture](./architecture/architecture.md)
 - [Types declared in Rust](./internals/rust_types.md)
 - [Templates](./templates/porting.md)
+- [Features](./templates/features.md)
 - [Roadmap](roadmap.md)
