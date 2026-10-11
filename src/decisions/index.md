@@ -236,6 +236,11 @@ Why Rusteal is the way it is. Each record gives the decision, the reasons, what 
 ### H9. Release workflows ask for `contents: write`
 - **Why.** The default token is read-only in new repositories, and pushing the tag failed (`68673dd`).
 
+### H10. A vulnerable dependency fails the checks
+- **Decision.** `cargo audit` runs in CI and in Prepare release, before it reports the statuses `main` requires (`7d873c2`).
+- **Why.** A dependency with a RustSec vulnerability advisory must never reach a release; `Cargo.lock` is not versioned (H2), so the audit checks what a build resolves that day.
+- **Implies.** Only vulnerabilities fail; unmaintained and yanked crates warn. A new advisory can turn a pull request red with no change of its own: update or replace the dependency. `cargo-audit` comes prebuilt through `taiki-e/install-action`, pinned to a commit.
+
 ## Process
 
 ### I1. The engine's templates set the priorities

@@ -51,7 +51,7 @@ Four workflows in `.github/workflows/` carry a change from a branch to crates.io
 
 | Workflow | Runs on | What it does |
 |---|---|---|
-| `ci.yml` | pushes to `develop`, pull requests to `develop` and `main` | build, tests and Clippy of the workspace |
+| `ci.yml` | pushes to `develop`, pull requests to `develop` and `main` | build, tests and Clippy of the workspace, and `cargo audit`, which fails on any dependency with a RustSec vulnerability advisory |
 | `prepare-release.yml` | every pull request to `main` | what the release will do after the merge, before it: the version, the tests, Clippy, the plugin snapshot and the packaging of every crate as it will be published |
 | `release.yml` | a push to `main` | publishes the crates in dependency order and creates the tag |
 | `sync-develop.yml` | the end of a Release run | fast-forwards `develop` to `main`, so the version commit reaches it |
@@ -61,7 +61,7 @@ Four workflows in `.github/workflows/` carry a change from a branch to crates.io
 1. **Anything to release?** Nothing that goes into a package changed since the last tag: no release, and the job ends there.
 2. **The next version.** The published `max_version` of the `rusteal` crate, bumped by the subjects of the commits since that version's tag (`v<max_version>`; the last `v*` tag when that one is missing, `origin/main` when there is no tag at all). It never goes below the version already in `Cargo.toml`: a release that failed after its version commit does not make the next one lower.
 3. **The version commit.** Written into the pull request's branch with the CI skip marker, so it does not start runs that would wait for approval (a commit pushed by the bot to a pull request needs one).
-4. **The checks**, on that commit: `cargo test --workspace`, Clippy, the plugin snapshot sync, and `cargo +stable package --workspace --exclude xtask`, which builds every crate from its packaged sources. The pinned Rust 1.88 Cargo cannot package a workspace whose internal dependencies are not published yet; the stable one can.
+4. **The checks**, on that commit: `cargo test --workspace`, Clippy, `cargo audit`, the plugin snapshot sync, and `cargo +stable package --workspace --exclude xtask`, which builds every crate from its packaged sources. The pinned Rust 1.88 Cargo cannot package a workspace whose internal dependencies are not published yet; the stable one can.
 5. **The statuses.** Because the version commit runs no workflow, Prepare release posts the `build` and `bump` statuses on it itself, once the checks passed.
 
 The `main` branch has a ruleset ("main: release checks") that requires `build` and `bump`, with no bypass: a release pull request merges only when Prepare release validated what will be published, so `main` never ends up with a version that does not publish.
