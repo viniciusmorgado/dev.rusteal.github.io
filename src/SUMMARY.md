@@ -21,7 +21,11 @@
 - [Errors](./architecture/errors.md)
 - [Hot reload](./architecture/hot_reload.md)
 - [The CLI](./architecture/cli.md)
+
+# Platforms
+
 - [Platform optimizations](./internals/platform_optimizations.md)
+- [Consoles](./platforms/consoles.md)
 
 # Templates
 

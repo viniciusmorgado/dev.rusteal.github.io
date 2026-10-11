@@ -42,6 +42,12 @@ Why Rusteal is the way it is. Each record gives the decision, the reasons, what 
 ### A9. No WASM hosting
 - **Decision.** Uika's wasmtime embedding (`65f606e`) was removed before the fork (`d5841ff`), with no reason recorded. Rusteal has no WASM support; do not assume it.
 
+### A10. Consoles: a static library per target, no engine fork, private platform packs
+- **Decision.** Rust reaches a console build as a `staticlib` per target, consumed by an external module and built by Rusteal's CLI before UBT; the default route links one aggregated archive into the game's executable. The repository keeps the platform-agnostic structure; each console's target, flags, build rules and CI live in a private platform pack. The runtime takes its system services from the engine.
+- **Why.** The engine's documented external-library mechanism links a prebuilt library on every platform, so no engine fork is needed; the console code cannot be public; and the engine is already ported to each console, unlike Rust's standard library.
+- **Rejected.** Patching UBT to compile Rust (kept for a limitation measured with the SDK); loose objects or LLVM bitcode as the artifact (dependencies missing, LLVM versions tied); one self-contained static library per Rusteal library (duplicate runtimes and symbols).
+- **Implies.** The module contract and the static backend are built and tested on desktop first. See [Consoles](../platforms/consoles.md).
+
 ## Runtime
 
 ### B1. Panics are caught at the boundary

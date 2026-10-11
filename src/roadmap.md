@@ -8,4 +8,6 @@ That is why the first features Rusteal brought bindings for were those the engin
 
 Right now, the main guide to Rusteal's development is Noir Blue, a first person shooter that the developers of Rusteal itself are making with it: what the game needs and Rusteal lacks is what comes next.
 
+Consoles are planned in two phases: what can be built on desktop and in public first (the module contract, a static backend, target platforms in the CLI, the runtime's services taken from the engine), then the bring-up with a console's SDK. See [Consoles](platforms/consoles.md).
+
 What Rusteal does not cover yet, and what each gap takes, is tracked in the repository's `docs/`: the [third person gaps](https://github.com/viniciusmorgado/rusteal/blob/main/docs/third-person-gaps.md), the [plugin roadmap](https://github.com/viniciusmorgado/rusteal/blob/main/docs/plugin-roadmap.md), and, for platforms, mobile and console support, both being worked on (see [Unreal Engine and Rust](intro/unreal_rust.md) for the console path).

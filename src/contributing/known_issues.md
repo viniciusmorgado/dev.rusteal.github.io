@@ -28,6 +28,18 @@ No game code needs `unsafe`. What is still less idiomatic than it could be:
 - **`get_class()` and `get_outer()` still return raw handles**, kept for existing code; `class()` and `outer::<U>()` are the typed ones.
 - **A `#[uclass]` struct's generated fields** (`__obj`, `__rust_data`) are public, for the macros' own code; their names keep them out of the way, but they are not hidden from the type.
 
+## Static linking (consoles)
+
+Each Rust library is a separate dynamic library today, and parts of the runtime depend on it; one aggregated static library, the route to consoles, breaks them (see [Consoles](../platforms/consoles.md#what-the-static-backend-has-to-change)):
+
+- `entry!()` exports the same four symbols from every library.
+- One API table per runtime instance (`rusteal-core/src/api.rs`'s `OnceLock`).
+- Generated function ids are positions in each library's own table.
+- Type ids hash the short name only (above).
+- Registration relies on `inventory`'s link-time collection, which an archive does not guarantee to keep.
+- Every generated bindings crate is the package `bindings 0.1.0`, so Cargo refuses a crate graph holding two of them.
+- The handshake compares the Rusteal version, not the bindings that were generated.
+
 ## Hot reload
 
 - **Structs and enums** keep their old layout until an editor restart.
