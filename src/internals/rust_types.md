@@ -38,7 +38,7 @@ Properties of the enum's type are `FEnumProperty`s over a byte, which is also ho
 
 ## Interfaces
 
-> `#[uinterface]` is on the `feat/uinterface` branch, not in a release yet (0.7.0 does not have it). What follows describes that branch; on `develop`, a class implements interfaces declared in C++ or Blueprint by class path only.
+> `#[uinterface]` is on `develop` and comes in the release after 0.7.0; 0.7.0 only lets a class implement interfaces declared in C++ or Blueprint, by class path.
 
 `#[uinterface]` keeps the trait as Rust code and builds an interface from its functions:
 

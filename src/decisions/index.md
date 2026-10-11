@@ -90,6 +90,11 @@ Why Rusteal is the way it is. Each record gives the decision, the reasons, what 
 ### C3. Projects move forward whole
 - **Decision.** `rusteal upgrade` rewrites the pins and replaces both plugins wholesale; mixed versions never run (`d26cb48`).
 
+### C4. A project's glam follows Rusteal's
+- **Decision.** New projects get the CLI's `GLAM_VERSION` (`rusteal-cli/src/new_cmd.rs`), and `rusteal upgrade` rewrites the project's `glam` to it next to the pins (`3461ef7`).
+- **Why.** The generated bindings crate takes `glam` from the project's workspace while `rusteal-core` takes it from Rusteal's; with two versions they are two crates whose types do not mix, and the bindings stop compiling.
+- **Implies.** Bumping `glam` in the workspace means bumping `GLAM_VERSION` with it. Projects that follow a checkout (`--runtime-path`) are not upgraded: change their `glam` by hand.
+
 ## Code generation
 
 ### D1. The bindings are generated into each game project and committed there
