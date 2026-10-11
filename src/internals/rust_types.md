@@ -38,6 +38,8 @@ Properties of the enum's type are `FEnumProperty`s over a byte, which is also ho
 
 ## Interfaces
 
+> `#[uinterface]` is on the `feat/uinterface` branch, not in a release yet (0.7.0 does not have it). What follows describes that branch; on `develop`, a class implements interfaces declared in C++ or Blueprint by class path only.
+
 `#[uinterface]` keeps the trait as Rust code and builds an interface from its functions:
 
 - `create_interface` makes a plain `UClass` (not a `URustealReifiedClass`: an interface has no instances, so no Rust data) whose parent is `UInterface`, with `CLASS_Interface | CLASS_Abstract` and the metadata `IsBlueprintBase` and `BlueprintType`, which is what the editor's interface picker (`FKismetEditorUtilities::IsClassABlueprintImplementableInterface`) and variable types look for;

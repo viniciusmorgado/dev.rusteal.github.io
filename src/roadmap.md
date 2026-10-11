@@ -1,8 +1,11 @@
 # Roadmap
 
-Unreal is a huge engine, and it's constantly changing, as you can see in our section of [UE6 Radar](https://github.com/viniciusmorgado/rusteal/blob/ue6/docs/ue6-radar.md), because of this we prioratize the addition of new bindings to it's features based on real projects or required parity resources with C++ for basic functionality, for example the first features that we introduce bindings for in Rusteal are related with the port of the base templates that Unreal itself have by default when we create a new game, that's because base boilerplate code for number of genres are already delivered by Epic as part of the engine, and serves as base for most projects, if Rusteal want to preserve the same experience for it's bindings the templates need to be ported first: [Rusteal default templates](https://github.com/viniciusmorgado/rusteal#templates)
+Unreal is a huge engine, and it is constantly changing, as the [UE6 radar](https://github.com/viniciusmorgado/rusteal/blob/ue6/docs/ue6-radar.md) shows. Because of this, we prioritize the bindings and features Rusteal adds by what real projects need, and by what parity with C++ basic functionality requires.
+
+That is why the first features Rusteal brought bindings for were those the engine's own templates use, the ones Unreal offers when a new game is created. Epic already delivers the base boilerplate for a number of genres as part of the engine, and most projects start from it; if Rusteal wants to give its bindings the same experience, the templates have to be ported first. They are the [Rusteal templates](https://viniciusmorgado.github.io/game.rusteal.github.io/getting_started/templates.html), every one of the engine's game templates with its gameplay in Rust.
 
 ### Going forward
 
-Right now the major guide to the development of Rusteal is the game Noir Blue, a first person shooter that the developers of Rusteal itself are using
-s
+Right now, the main guide to Rusteal's development is Noir Blue, a first person shooter that the developers of Rusteal itself are making with it: what the game needs and Rusteal lacks is what comes next.
+
+What Rusteal does not cover yet, and what each gap takes, is tracked in the repository's `docs/`: the [third person gaps](https://github.com/viniciusmorgado/rusteal/blob/main/docs/third-person-gaps.md), the [plugin roadmap](https://github.com/viniciusmorgado/rusteal/blob/main/docs/plugin-roadmap.md), and, for platforms, mobile and console support, both being worked on (see [Unreal Engine and Rust](intro/unreal_rust.md) for the console path).

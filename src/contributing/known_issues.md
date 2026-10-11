@@ -1,0 +1,32 @@
+# Known issues and sharp edges
+
+Things that work as written but surprise. Each is a candidate for a fix; until then, know them before changing the code around them.
+
+## The boundary
+
+- **Function pointer order is not tested.** The contract tests check struct sizes and offsets, not the order or signatures of the table's function pointers. A field added on one side only, or in a different position, compiles and calls the wrong function. A field appended to a C++ sub-table but missing from its positional initializer is a null pointer.
+- **Func ids are not bounds-checked.** The Rust side never reads `func_count`; the bindings and the C++ `Generated/` must come from the same codegen run.
+- **The version is the only compatibility check.** Changing the table without changing the version (any work between releases) is not detected: rebuild the plugin and the library together.
+- **`on_shutdown` runs twice per unload**: once as a callback, once from `rusteal_shutdown`. It must stay idempotent.
+- **The game thread is a convention.** No API entry point asserts it; `GCurrentLibrary` is not thread-local. Engine calls from a background thread are undefined; use `task::spawn` and `run_on_game_thread`.
+- **Validity checks differ by entry point.** Property and container functions only check for null; generated wrappers check `IsValid` only in Debug and Development. Rust callers must `checked()` first.
+- **No `FWeakObjectPtr` size assert** on the C++ side, though weak pointers are copied as 8 bytes.
+
+## Macros
+
+- **Unknown `#[uclass]` and `#[component]` arguments are ignored**, and attributes on a `#[uclass]` struct are dropped, where `#[uproperty]` and `#[ufunction]` reject unknown arguments.
+- **Type ids hash the type's name only.** Two Rust classes with the same name in one library collide.
+- **Private fields are invisible to the garbage collector.** A `UObjectRef` kept in a private field does not keep its object alive.
+- **`Pinned` is not reference counted.** Two `Pinned` of the same object share one root; dropping either unroots it.
+
+## Hot reload
+
+- **Structs and enums** keep their old layout until an editor restart.
+- **Rust-private fields** start over from `Default` on every reload.
+- **Not tested**: hot reload on Windows and macOS, a changed parent class, components added or removed (see `docs/hot-reload.md`).
+
+## Tooling
+
+- **A test project under `/tmp` fails at step 1 on Linux**: UBT builds the exporter's path without its leading `/`. Use a directory of your own.
+- **`rusteal-cli/ue_plugin_embed/`** is a local, possibly stale snapshot; builds in the workspace ignore it (they read `ue_plugin/`).
+- **`setup.rs`, `global_config.rs` and `sync_plugin.rs`** have no unit tests; they are covered by making a project.
