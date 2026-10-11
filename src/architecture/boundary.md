@@ -43,7 +43,7 @@ Two hand-written mirrors, field by field in the same order: `rusteal-ffi/src/api
 
 | Sub-table | Services |
 |---|---|
-| `core` | Validity, name, class, `IsA`, outer, `FName`, weak pointers, `take_error_message` |
+| `core` | Validity, name, class, `IsA`, outer, `FName`, weak pointers, `take_error_message`, `is_child_of` |
 | `logging` | `log(level, utf8)`, `report(RustealErrorReport*)` |
 | `lifecycle` | GC roots, pinned objects |
 | `property` | Typed get and set (bool, integers, floats, string, name, object, enum, struct), soft object paths |

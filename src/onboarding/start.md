@@ -27,6 +27,7 @@ This handbook is for whoever works on Rusteal itself: its crates, its CLI, its U
 
 ## Rules that are not negotiable
 
+- **Game code is safe, idiomatic Rust**: a feature is done only when a game developer can use it without `unsafe` and without raw handles, in plain Rust; game and plugin crates start with `#![deny(unsafe_code)]` (see [Decisions, I7](../decisions/index.md#i7-a-game-never-needs-unsafe-and-is-written-in-idiomatic-rust)).
 - **Commits**: Conventional Commits subjects (the release computes the version from them), small commits, everything in English. See [Tracking documents and conventions](../contributing/tracking.md).
 - **The boundary**: a change to the API table is made on both sides at once, in the same order (see [The Rust–C++ boundary](../architecture/boundary.md#before-changing-the-boundary)).
 - **Versions**: never edit a version number by hand; the release writes them (see [Releases and versions](../contributing/releases.md)).

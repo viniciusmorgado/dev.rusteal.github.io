@@ -81,6 +81,8 @@ A C++ helper library in the test project's own module, never in Rusteal, reaches
 
 ## Before a pull request
 
+- A game-facing API needs no `unsafe` and no raw handle from its caller, takes and returns typed references and Rust types, and its error is a `RustealResult`; the templates' sources stay free of `unsafe` (`game_developers_never_write_unsafe_code`).
+
 - The workspace checks above pass.
 - The test project builds with `rusteal build --all` and plays with no `LogRusteal` error or warning.
 - A change to the runtime, the macros, codegen or the plugin: the templates it reaches still build and play (`rusteal new` of each, with `--runtime-path`). Codegen and plugin changes reach all of them.

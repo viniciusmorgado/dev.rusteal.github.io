@@ -55,10 +55,10 @@ The macros generate `DynamicCall`s for `BlueprintImplementableEvent` bodies and 
 
 ## Services
 
-- **Console** (`console.rs`): `register_command(name, help, closure)` stores the closure in `delegate_registry` and registers the command, which receives its arguments and the world; a name already registered is refused. `ConsoleVariable<T>` (`bool`, `i32`, `f32`, `String`) registers a variable and reads and writes it as text. The plugin forgets a library's commands when it unloads.
+- **Console** (`console.rs`): `register_command(name, help, closure)` stores the closure in `delegate_registry` and registers the command, which receives its arguments and a `CommandContext` whose `world::<W>()` checks the world's handle into a typed reference; a name already registered is refused. `ConsoleVariable<T>` (`bool`, `i32`, `f32`, `String`) registers a variable and reads and writes it as text. The plugin forgets a library's commands when it unloads.
 - **Input** (`input.rs`): `bind_action_raw(actor, action, trigger, "Function")` binds an Enhanced Input action to a `#[ufunction]`, whose parameters must be a prefix of `(FInputActionValue, ElapsedSeconds, TriggeredSeconds, UInputAction*)`; the actor needs an `UEnhancedInputComponent`. `should_display_touch_interface()` is the Slate check the templates use for touch controls.
 - **Widgets** (`widget.rs`): `create_widget_raw(owner, class)` picks the owner as `CreateWidget` does (player controller, world, game instance).
-- **Logging** (`logging.rs`): `ulog!(level, ...)` with `LOG_DISPLAY`, `LOG_WARNING`, `LOG_ERROR`, written to the `LogRusteal` category. There are no Rust-side categories. It needs the API initialized.
+- **Logging**: games log through the [`log`](https://docs.rs/log) crate. `rusteal-runtime/src/ue_log.rs` installs a `log::Log` when the library initializes (`init`), with `Info` as the default maximum level, and writes each record to the `LogRusteal` category: `error!` as an error, `warn!` as a warning, the rest at display level. Each library has its own `log` instance, so the game's and every plugin's loggers are independent. Underneath, `ulog!(level, ...)` (`logging.rs`, `LOG_DISPLAY`, `LOG_WARNING`, `LOG_ERROR`) is the raw call, kept for older projects; it needs the API initialized.
 
 ## `rusteal-runtime`
 

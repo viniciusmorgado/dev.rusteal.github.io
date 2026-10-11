@@ -19,6 +19,15 @@ Things that work as written but surprise. Each is a candidate for a fix; until t
 - **Private fields are invisible to the garbage collector.** A `UObjectRef` kept in a private field does not keep its object alive.
 - **`Pinned` is not reference counted.** Two `Pinned` of the same object share one root; dropping either unroots it.
 
+## Idiomatic gaps (decision I7)
+
+No game code needs `unsafe`. What is still less idiomatic than it could be:
+
+- **Input actions and delegates are bound to a function by its name** (`bind_action(&me, action, ETriggerEvent::Started, "OnInputStarted")`, `_add_ufunction(target, "Function")`): a typo is found at run time, as in C++'s `BindAction`. Binding a method or a closure directly would catch it at compile time.
+- **`RustealError::log` takes a level constant** (`LOG_WARNING`) instead of a `log::Level`.
+- **`get_class()` and `get_outer()` still return raw handles**, kept for existing code; `class()` and `outer::<U>()` are the typed ones.
+- **A `#[uclass]` struct's generated fields** (`__obj`, `__rust_data`) are public, for the macros' own code; their names keep them out of the way, but they are not hidden from the type.
+
 ## Hot reload
 
 - **Structs and enums** keep their old layout until an editor restart.

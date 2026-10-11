@@ -258,6 +258,15 @@ Why Rusteal is the way it is. Each record gives the decision, the reasons, what 
 ### I5. Verified headless, then by hand
 - **Decision.** Ports and hot reload are validated in a headless editor driven by Python, then by hand; the docs record what was tested and what was not (Windows and macOS hot reload, changed parent classes).
 
+### I7. A game never needs `unsafe`, and is written in idiomatic Rust
+- **Decision.** Two rules for every feature Rusteal adds: a game developer using it never has to write `unsafe` code, and the whole game can always be written in idiomatic Rust. Every game and plugin crate the templates create starts with `#![deny(unsafe_code)]`.
+- **Why.** Rusteal's promise to a game developer is Rust's: memory safety checked by the compiler, and code that reads like any other Rust. An API that hands out raw handles, or needs `unsafe` to be used, moves the risk onto the game, where nobody audits it.
+- **Implies.**
+  - `unsafe` lives in Rusteal (`rusteal-core`, the generated bindings, the macros' output) behind safe functions; a raw handle from the engine becomes a typed reference through a checked call (`UObjectRef::from_handle`, `SubclassOf::from_class`), never through `from_raw` in game code.
+  - Game-facing APIs take and return typed references and Rust types (`SpawnParams` with `Option<UObjectRef<Actor>>`, `CommandContext::world()`, `load_class::<T>()`), not `UObjectHandle`s, and log through the `log` crate.
+  - The macros' output is accepted by `#![deny(unsafe_code)]` (`tests/manual_compiles.rs` compiles its game crate with it), and `game_developers_never_write_unsafe_code` (`rusteal-cli/src/templates.rs`) fails when a template's code uses `unsafe`, `from_raw`, raw handles or `ulog!`.
+  - A feature that cannot meet the rules is not finished: either the safe API comes with it, or the gap is recorded in [Known issues](../contributing/known_issues.md).
+
 ### I6. The README presents, the handbooks document
 - **Decision.** The README keeps the presentation (what Rusteal is, why use it, UE6, acknowledgments, license) and points to the two handbooks; using Rusteal is documented in the game developer's handbook, working on it in this one.
 - **Why.** Nobody reads a 1600-line README; each handbook serves one reader.
