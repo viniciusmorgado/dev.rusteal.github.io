@@ -165,6 +165,12 @@ Why Rusteal is the way it is. Each record gives the decision, the reasons, what 
 ### E10. UBT runs with `-NoHotReload`
 - **Why.** With the editor open, UBT named the binaries for a C++ hot reload and the link failed; Rusteal never hot reloads C++ (`7704dc2`).
 
+### E11. On Mac with Xcode 27, `rusteal package` gives `xcodebuild` a stdin
+- **Decision.** UAT runs with `DEVELOPER_DIR` pointing at a mirror of Xcode's `Developer` directory whose `xcodebuild` runs the real one with `/dev/null` as its stdin (`rusteal-cli/src/xcode_shim.rs`).
+- **Why.** UE 5.8 starts the `xcodebuild` that finalizes the `.app` without a stdin, and Xcode 27 then fails the scheme's pre-action: no Mac game could be packaged, Rusteal or not.
+- **Rejected.** Running the finalize step by hand and continuing with `-skipbuild` (the receipt is never written); disabling UBA (5.8 always uses its executor); patching the engine install.
+- **Implies.** Remove it once the engine gives `xcodebuild` a stdin ([reported to Epic](https://forums.unrealengine.com/t/5-8-mac-failed-to-finalize-the-app-with-xcode-on-xcode-27-xcodebuild-started-without-stdin-bad-file-descriptor-in-touch-ubt-generated-tiles/2839864)). See [Platform optimizations](../internals/platform_optimizations.md#macos-xcodebuild-without-a-stdin).
+
 ## Hot reload
 
 ### F1. A reload loads a numbered link or copy of the deployed library
@@ -271,7 +277,7 @@ Why Rusteal is the way it is. Each record gives the decision, the reasons, what 
 - **Decision.** `rusteal.sln` and `ide/RustealRules` give the `*.Build.cs` files the context UBT gives them; without them a language server flags required `using` lines as unnecessary, and removing them breaks UBT (`f0e9d1d`).
 
 ### I5. Verified headless, then by hand
-- **Decision.** Ports and hot reload are validated in a headless editor driven by Python, then by hand; the docs record what was tested and what was not (Windows hot reload, changed parent classes, packaging on macOS).
+- **Decision.** Ports and hot reload are validated in a headless editor driven by Python, then by hand; the docs record what was tested and what was not (Windows hot reload, changed parent classes).
 
 ### I7. A game never needs `unsafe`, and is written in idiomatic Rust
 - **Decision.** Two rules for every feature Rusteal adds: a game developer using it never has to write `unsafe` code, and the whole game can always be written in idiomatic Rust. Every game and plugin crate the templates create starts with `#![deny(unsafe_code)]`.
