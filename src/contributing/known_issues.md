@@ -5,9 +5,8 @@ Things that work as written but surprise. Each is a candidate for a fix; until t
 ## The boundary
 
 - **Function pointer order is not tested.** The contract tests check struct sizes and offsets, not the order or signatures of the table's function pointers. A field added on one side only, or in a different position, compiles and calls the wrong function. A field appended to a C++ sub-table but missing from its positional initializer is a null pointer.
-- **Func ids are not bounds-checked.** The Rust side never reads `func_count`; the bindings and the C++ `Generated/` must come from the same codegen run.
-- **The version is the only compatibility check.** Changing the table without changing the version (any work between releases) is not detected: rebuild the plugin and the library together.
-- **`on_shutdown` runs twice per unload**: once as a callback, once from `rusteal_shutdown`. It must stay idempotent.
+- **The API table has no fingerprint of its own.** A library checks the version and its bindings' fingerprint; changing the API table without changing the version (any work between releases) is not detected: rebuild the plugin and the library together.
+- **Plugins made before 0.9 register without a fingerprint** (`RustealRegisterPluginLibrary`): their library checks the function count only. Switching the module to `RustealRegisterPluginLibraryChecked`, as the templates do, turns the check on.
 - **The game thread is a convention.** No API entry point asserts it; `GCurrentLibrary` is not thread-local. Engine calls from a background thread are undefined; use `task::spawn` and `run_on_game_thread`.
 - **Validity checks differ by entry point.** Property and container functions only check for null; generated wrappers check `IsValid` only in Debug and Development. Rust callers must `checked()` first.
 - **No `FWeakObjectPtr` size assert** on the C++ side, though weak pointers are copied as 8 bytes.
@@ -15,7 +14,6 @@ Things that work as written but surprise. Each is a candidate for a fix; until t
 ## Macros
 
 - **Unknown `#[uclass]` and `#[component]` arguments are ignored**, and attributes on a `#[uclass]` struct are dropped, where `#[uproperty]` and `#[ufunction]` reject unknown arguments.
-- **Type ids hash the type's name only.** Two Rust classes with the same name in one library collide.
 - **Private fields are invisible to the garbage collector.** A `UObjectRef` kept in a private field does not keep its object alive.
 - **`Pinned` is not reference counted.** Two `Pinned` of the same object share one root; dropping either unroots it.
 
@@ -28,17 +26,19 @@ No game code needs `unsafe`. What is still less idiomatic than it could be:
 - **`get_class()` and `get_outer()` still return raw handles**, kept for existing code; `class()` and `outer::<U>()` are the typed ones.
 - **A `#[uclass]` struct's generated fields** (`__obj`, `__rust_data`) are public, for the macros' own code; their names keep them out of the way, but they are not hidden from the type.
 
-## Static linking (consoles)
+## Static linking
 
-Each Rust library is a separate dynamic library today, and parts of the runtime depend on it; one aggregated static library, the route to consoles, breaks them (see [Consoles](../platforms/consoles.md#what-the-static-backend-has-to-change)):
+`rusteal package --static` links every library into the game (see [Static linking](../architecture/boundary.md#static-linking)):
 
-- `entry!()` exports the same four symbols from every library.
-- One API table per runtime instance (`rusteal-core/src/api.rs`'s `OnceLock`).
-- Generated function ids are positions in each library's own table.
-- Type ids hash the short name only (above).
-- Registration relies on `inventory`'s link-time collection, which an archive does not guarantee to keep.
-- Every generated bindings crate is the package `bindings 0.1.0`, so Cargo refuses a crate graph holding two of them.
-- The handshake compares the Rusteal version, not the bindings that were generated.
+- **Validated on Linux only.** The Windows (`.lib`, MSVC's runtime) and macOS paths are written but have not been packaged.
+- **No hot reload** of a static library, by design; `Rusteal.Reload` says so.
+- **One `log` logger and one panic hook** for every library: the maximum log level is shared.
+- **Threads Rusteal did not start** run with no module current, and are attributed to the game's library: a closure a `rayon` worker registers belongs to the game.
+- **A crate used by two libraries is refused**, since its types would be registered by both; move shared code without Rust types into its own crate, used by both, or the types into one library.
+- **Editor plugins are left out** of the archive (they are not part of a packaged game).
+- **Plugins made before 0.9** stage their dynamic library anyway: their `Build.cs` adds it directly instead of through `Rusteal.AddRustLibrary`.
+- **The manifest binary is built for the host.** A registration behind a `cfg` of the target platform would differ between the host's list and the target's archive.
+- **The engine allocator is global.** A game that sets its own `#[global_allocator]` must turn it off (`[static] engine_allocator = false`).
 
 ## Hot reload
 

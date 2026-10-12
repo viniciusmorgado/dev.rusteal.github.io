@@ -1,6 +1,6 @@
 # Consoles
 
-Rusteal builds for Linux, Windows and macOS (Apple silicon); consoles are not supported yet. This chapter is how Rusteal gets to PlayStation 5 and Xbox Series X|S (and to any platform whose Unreal support is private), what can be prepared now in the public repository, and what can only be done once a project has console access. It comes from two research reports made on 11 October 2026 from public sources and from Rusteal's own code, without access to any console SDK: what they could confirm is marked as such, and what depends on the SDK is listed as open.
+Rusteal builds for Linux, Windows and macOS (Apple silicon); consoles are not supported yet, and everything that could be prepared without an SDK is done (see [Road ahead](#road-ahead)). This chapter is how Rusteal gets to PlayStation 5 and Xbox Series X|S (and to any platform whose Unreal support is private), what can be prepared now in the public repository, and what can only be done once a project has console access. It comes from two research reports made on 11 October 2026 from public sources and from Rusteal's own code, without access to any console SDK: what they could confirm is marked as such, and what depends on the SDK is listed as open.
 
 The goal behind the plan is concrete: a game made with Rusteal ships on PC, does well, and its publisher gets it console access. From that moment the publisher wants a release date, so the work left after access has to be as small and as predictable as possible.
 
@@ -68,35 +68,38 @@ Unreal builds consoles monolithically, and that is the path platform certificati
 
 The editor keeps the dynamic libraries and hot reload: the static backend is for packaged games only, built from the same crates.
 
-## What the static backend has to change
+## What the static backend changed
 
-Today each library (the game's and each Rusteal plugin's) is a `cdylib` loaded on its own, and several parts of the runtime rely on that isolation. In one aggregated archive they would collide:
+Each library (the game's and each Rusteal plugin's) was a `cdylib` loaded on its own, and several parts of the runtime relied on that isolation. In one aggregated archive they would have collided; each was changed on desktop, in this repository (milestone 1, the module contract, and milestone 2, the static backend):
 
-| Today | In one archive | The change |
+| Before | In one archive | Now |
 |---|---|---|
-| `entry!()` exports the same four symbols (`rusteal_init`...) from every library | Duplicate symbols, or the linker keeps one of them | One entry point for the aggregate; each library exposes a descriptor instead |
-| `rusteal-core/src/api.rs` keeps one table pointer in a `OnceLock` | The second library to initialize panics, or uses the first one's table | A context per library (module), with the shared engine services apart from the library's own function table |
-| The generated functions' ids are positions in each library's function table | Index 7 of plugin A is a different function from index 7 of plugin B | Each bindings crate resolves its own table through its module's context |
-| A type's id hashes its short name | `Inventory::Item` and `Quest::Item` collide (already a [known issue](../contributing/known_issues.md)) | Ids qualified by module and path |
-| Registration relies on `inventory`'s link-time collection | Nothing guarantees the linker keeps every registration from an archive | An explicit list of descriptors, referenced by the aggregate, checked for completeness at startup |
-| Every generated bindings crate is the package `bindings 0.1.0` | Cargo refuses a crate graph with two of them (reproduced with a minimal workspace) | A unique package name per library, imported as `bindings` through a Cargo alias |
-| The handshake compares the Rusteal version | Two generations of bindings with the same version are not told apart | A fingerprint of the bindings (functions and signatures) checked before any call |
-| `on_shutdown` runs twice per unload | A module without a library handle has no unload to rely on | One shutdown state machine, safe to call once or twice, after a partial init too |
+| `entry!()` exported the same four symbols (`rusteal_init`...) from every library | Duplicate symbols | `entry!()` defines `__RUSTEAL_MODULE` and `__RUSTEAL_EXPORTS`; the dynamic exports exist only without `static-link`; the archive exports `rusteal_static_modules` alone |
+| `rusteal-core/src/api.rs` kept one table pointer in a `OnceLock`, set once | The second library to initialize panicked | The services' table is shared; each library has a `Module` context, and its own function table lives in its bindings crate |
+| The generated functions' ids were positions in one table | Index 7 of plugin A is not index 7 of plugin B | Each bindings crate reads its own `__RUSTEAL_FUNCS`, bound and checked at start |
+| A type's id hashed its short name | `Inventory::Item` and `Quest::Item` collided | Ids hash the module path and name; parents and components give theirs through `UeClass::RUST_TYPE_ID` |
+| Registration relied on `inventory`'s link-time collection | Nothing guaranteed the linker kept every registration | One object (fat LTO, one codegen unit), registrations tagged with their crate, and a manifest each library checks at start |
+| Every generated bindings crate was the package `bindings 0.1.0` | Cargo refused the crate graph | The package is `<crate>-bindings`, imported as `bindings` |
+| The handshake compared the Rusteal version | Two generations of bindings were not told apart | The function table's count and fingerprint are checked when a library starts |
+| `on_shutdown` ran twice per unload | No library handle to rely on | One start and stop state machine per module, safe twice and after a partial start |
 
-The C++ side keeps its per-library tables and package paths (`/Script/<Plugin>`): those must not change, since cooked Blueprints refer to Rust classes by them. What changes is that a library is identified by a context, not by a loaded file.
+The C++ side kept its per-library tables and package paths (`/Script/<Plugin>`): cooked Blueprints refer to Rust classes by them. A library is found by name in the archive instead of by file. How it all works is in [Static linking](../architecture/boundary.md#static-linking).
 
 ## Depend on the engine, not on the operating system
 
 The Rust standard library talks to the operating system: threads, time, locks, thread-local storage, the allocator, unwinding. On a console those parts of `std` are the hardest to port. Unreal, on the other hand, is already ported to every console it supports. The runtime can take its services from the engine through the API table instead of from `std`:
 
-| Service | Today | Through the engine |
+| Service | Before | Now (milestone 4) |
 |---|---|---|
-| Allocation | The system allocator | A `GlobalAlloc` over `FMemory::Malloc`/`Free`, available before the first Rust allocation |
-| Background work | `task::spawn` on `std::thread` | The engine's task system |
-| Time | `std::time::Instant` | `FPlatformTime` |
-| Logging | The `log` crate and `ulog!` already go to the engine | (unchanged) |
+| Allocation | The system allocator | In a static build, `rusteal_runtime::EngineAllocator`, a `GlobalAlloc` over `FMemory::Malloc`, `Realloc` and `Free` through C symbols the plugin defines, available before the first Rust allocation; on by default, `[static] engine_allocator = false` turns it off (for a game with its own global allocator). The editor's dynamic libraries keep the system allocator. |
+| Background work | `task::spawn` on `std::thread` | The engine's task system (`UE::Tasks::Launch`, background priority), through the API table's `platform` sub-table |
+| Time | `std::time::Instant` | `FPlatformTime::Seconds`; `rusteal_runtime::runtime::time::Instant` gives it to game code |
+| Game thread | A recorded `ThreadId` | `IsInGameThread` |
+| Logging | The `log` crate and `ulog!` already went to the engine | (unchanged) |
 
-With those, the runtime needs little more than `core` and `alloc` on a console, and a port of `std` becomes a smaller and optional piece of the platform pack. Game code can keep using `std` on PC; on a console the rule is that it uses Rusteal's services rather than the operating system directly.
+`rusteal-core` keeps `std` versions of these only in `std_fallback.rs`, for its tests without the engine; a test fails if any other source file reaches `std::thread` or the `std` clock. Locks (`std::sync`) and thread-locals are still `std`'s: they are the next candidates, if a console's port of `std` lacks them.
+
+With those, the runtime needs little more than `core`, `alloc` and the synchronization primitives on a console, and a port of `std` becomes a smaller and optional piece of the platform pack. Game code can keep using `std` on PC; on a console the rule is that it uses Rusteal's services rather than the operating system directly. `[consoles] check = true` in `rusteal.toml` makes every build list the game's uses of `std::thread` and the `std` clock, and the dependencies known to start threads or use the OS's I/O (`rayon`, `tokio`...), as warnings: nothing is refused, since a dependency may work once a platform's `std` is ported.
 
 **Panics.** Consoles' C++ is usually built without exceptions, and unwinding may not be available to Rust there. If a console needs `panic = "abort"`, `ffi_boundary`'s `catch_unwind` no longer turns a panic into a logged error: the process ends, through the platform's crash reporting. Expected failures are already `RustealResult`s; the change is a documented policy per platform, not a different API.
 
@@ -114,12 +117,16 @@ The port has two phases. The first is done now, on desktop and in public, before
 
 ### Before access: on desktop, in public
 
+All four were done in October 2026 (Rusteal 0.9) and validated on Linux; Windows and macOS are untested.
+
 | Milestone | Work | Done when |
 |---|---|---|
 | 1. Module contract | Contexts per library, qualified type ids, explicit registration, unique bindings package names, bindings fingerprint, one shutdown state machine; the dynamic backend keeps working | A fixture with the game and two Rusteal plugins passes: calls from A to B and back reach the right library, two classes with the same short name coexist, a library's tasks and delegates keep their owner |
 | 2. Static backend on desktop | `rusteal package --static`: one aggregated `staticlib`, an external module consuming it, a manifest of the artifact; the editor stays dynamic | The fixture, packaged in Development and Shipping on Linux and Windows, starts from a clean machine with no Rust dynamic library, cooks and loads a Blueprint derived from a Rust class |
 | 3. Target platforms in the CLI | Host and target separated; unknown targets refused instead of falling back to `.so`; platform definitions loaded from outside the repository | A platform definition file for desktop drives the same build as the built-in one |
 | 4. Engine services | The allocator, tasks and time through the API table | The runtime builds without the `std` features it no longer needs, and the desktop fixture behaves the same |
+
+How they were validated: the fixture is a project with the game and two runtime plugins whose Rust code runs a scenario by itself and writes `PASS`/`FAIL` lines: two classes named `Item` in two libraries, a call from the game into a plugin's function and back, each library's tick hooks counted over thirty frames (once per frame each), a plugin's background task, a closure of the game on a plugin's actor's delegate and the other way round, a Blueprint child of a Rust class placed in the level, the game thread and the engine's clock. It passed in the editor's game mode (dynamic libraries), packaged with `--static` in Development and in Shipping (no Rust dynamic library in the package), and packaged from a definition file `rusteal platform show Linux` printed. The projects of the interface and error tests and every template were built and played again on top of it.
 
 ### After access: with the SDK and the devkits
 

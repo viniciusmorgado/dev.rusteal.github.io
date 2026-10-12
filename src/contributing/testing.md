@@ -91,6 +91,17 @@ DYLD_INSERT_LIBRARIES=/usr/lib/libgmalloc.dylib \
 
 The engine's crash handler prints only the top of the stack; while it hangs on the crash, `lldb --batch -p <pid> -o "thread backtrace all"` shows the whole stack of the faulting thread, through the signal frame. Stop a headless editor with `-ExecCmds=quit` or `kill -9`, not `SIGTERM`: on macOS a `SIGTERM` that arrives while the engine is still building distance fields (a first run, or `-ddc=Cold`) crashes the engine, with or without Rusteal.
 
+## Testing a static build
+
+A change to the runtime, the macros, the plugin's loading or the static backend is also tested packaged with `--static`, which runs the Rust code linked into the game, with every library sharing one runtime:
+
+```bash
+cargo run -p rusteal -- package <dir>/Probe --static
+cargo run -p rusteal -- package <dir>/Probe --static --shipping --output <dir>/Probe/Packaged/Shipping
+```
+
+Run the packaged game (`Packaged/Linux/Probe.sh`, `-nullrhi` for no window). A Shipping build has no log, so a test game reports through its own Rust code, writing `PASS`/`FAIL` lines to a file and quitting when it is done. What is worth covering is what differs from the editor: a game with two or more Rust plugins, classes with the same name in two libraries, calls and delegates between libraries, each library's tick hooks and tasks, a Blueprint child of a Rust class placed in a level (cooked), and the absence of Rust dynamic libraries in the package (see [Consoles](../platforms/consoles.md#road-ahead) for the fixture used for the static backend).
+
 ## Before a pull request
 
 - A game-facing API needs no `unsafe` and no raw handle from its caller, takes and returns typed references and Rust types, and its error is a `RustealResult`; the templates' sources stay free of `unsafe` (`game_developers_never_write_unsafe_code`).
