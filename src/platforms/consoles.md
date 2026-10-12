@@ -1,6 +1,6 @@
 # Consoles
 
-Rusteal builds for Linux and Windows; consoles are not supported yet. This chapter is how Rusteal gets to PlayStation 5 and Xbox Series X|S (and to any platform whose Unreal support is private), what can be prepared now in the public repository, and what can only be done once a project has console access. It comes from two research reports made on 11 October 2026 from public sources and from Rusteal's own code, without access to any console SDK: what they could confirm is marked as such, and what depends on the SDK is listed as open.
+Rusteal builds for Linux, Windows and macOS (Apple silicon); consoles are not supported yet. This chapter is how Rusteal gets to PlayStation 5 and Xbox Series X|S (and to any platform whose Unreal support is private), what can be prepared now in the public repository, and what can only be done once a project has console access. It comes from two research reports made on 11 October 2026 from public sources and from Rusteal's own code, without access to any console SDK: what they could confirm is marked as such, and what depends on the SDK is listed as open.
 
 The goal behind the plan is concrete: a game made with Rusteal ships on PC, does well, and its publisher gets it console access. From that moment the publisher wants a release date, so the work left after access has to be as small and as predictable as possible.
 

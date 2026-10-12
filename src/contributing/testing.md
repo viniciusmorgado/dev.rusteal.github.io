@@ -10,7 +10,7 @@ cargo test --workspace
 cargo clippy --workspace --all-targets --no-deps -- -D warnings
 ```
 
-That is what CI runs on every pull request; run it before pushing. Where the engine-free tests are, and what each protects, is in [The CLI](../architecture/cli.md#tests), [Code generation](../architecture/codegen.md#tests) and [The runtime](../architecture/runtime.md#testing-the-runtime).
+That is what CI runs on every pull request, on Linux only: the Windows and macOS code paths (`#[cfg(target_os)]`) are only built on those machines, so run it there too when you change them. Run it before pushing. Where the engine-free tests are, and what each protects, is in [The CLI](../architecture/cli.md#tests), [Code generation](../architecture/codegen.md#tests) and [The runtime](../architecture/runtime.md#testing-the-runtime).
 
 Anything that touches the engine is tested in a UE project of your choice,
 driven by this checkout's CLI (`cargo run -p rusteal --`, from the repository
@@ -70,7 +70,7 @@ What happens in the editor is tested with editor Python, in an editor with no wi
   -ExecCmds="py <dir>/test.py" -abslog="<dir>/test.log"
 ```
 
-(`UnrealEditor-Cmd.exe` under `Engine/Binaries/Win64/` on Windows.) A test script:
+(`UnrealEditor-Cmd.exe` under `Engine/Binaries/Win64/` on Windows, `Engine/Binaries/Mac/UnrealEditor.app/Contents/MacOS/UnrealEditor` on macOS.) A test script:
 
 - loads a map, places what it needs in the editor world (Python cannot spawn into the Play In Editor world), and saves;
 - starts Play In Editor with `LevelEditorSubsystem.editor_request_begin_play()` and drives it from a Slate tick callback (`unreal.register_slate_post_tick_callback`), a generator that yields the number of ticks to wait between steps;

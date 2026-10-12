@@ -44,10 +44,14 @@ Each Rust library is a separate dynamic library today, and parts of the runtime 
 
 - **Structs and enums** keep their old layout until an editor restart.
 - **Rust-private fields** start over from `Default` on every reload.
-- **Not tested**: hot reload on Windows and macOS, a changed parent class, components added or removed (see `docs/hot-reload.md`).
+- **macOS keeps every reloaded library**: `dlclose` never unloads a Rust library there, so each reload leaves the previous one mapped until the editor exits; the load copy is a full copy, not a link (see [Hot reload](../architecture/hot_reload.md)).
+- **Not tested**: hot reload on Windows, a changed parent class, components added or removed (see `docs/hot-reload.md`).
 
 ## Tooling
 
 - **A test project under `/tmp` fails at step 1 on Linux**: UBT builds the exporter's path without its leading `/`. Use a directory of your own.
 - **`rusteal-cli/ue_plugin_embed/`** is a local, possibly stale snapshot; builds in the workspace ignore it (they read `ue_plugin/`).
 - **`setup.rs`, `global_config.rs` and `sync_plugin.rs`** have no unit tests; they are covered by making a project.
+- **Packaging on macOS is not verified**: on the test machine (macOS 27, Xcode 27) UBT's last step, `Failed to finalize the .app with Xcode`, fails for any UE 5.8 C++ project, the engine's blank template included; the game itself compiles and links. An engine and Xcode issue, not Rusteal's; packaging has to be checked again with a combination the engine supports.
+- **CI runs on Linux only**: the Windows and macOS code paths are built and tested on those machines by hand.
+- **macOS on Intel processors** has not been tested; macOS support is Apple silicon only.

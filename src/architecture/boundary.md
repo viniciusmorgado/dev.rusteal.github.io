@@ -10,7 +10,7 @@ The `Rusteal` module is a `Runtime` module with the `Default` loading phase (`Ru
 2. registers the component list resync and the reify delete listener;
 3. adds the core ticker (`TickLibraries`, which calls every library's `on_tick`);
 4. **`RustealFillFuncTable()`**, from the generated `RustealFillFuncTable.cpp`: the engine functions' table (below);
-5. registers the game's library: the project's name, the package `/Script/Rusteal`, the file `<ProjectPluginsDir>/Rusteal/Binaries/<Platform>/<prefix>rusteal.<ext>` (`librusteal.so`, `librusteal.dylib`, `rusteal.dll`).
+5. registers the game's library: the project's name, the package `/Script/Rusteal`, the file `<ProjectPluginsDir>/Rusteal/Binaries/<Platform>/<prefix>rusteal.<ext>` (`librusteal.so`, `librusteal.dylib`, `rusteal.dll`). `RustealLibraryFileName` names it: the prefix is `lib` on every platform but Windows, the names `rusteal build` deploys and `Rusteal.Build.cs` stages, and the extension the engine's `GetModuleExtension()`. It does not use `FPlatformProcess::GetModulePrefix()`: only the Unix platform overrides it with `lib`, it is empty on Mac, and the plugin looked for `rusteal.dylib` there.
 
 A Rusteal plugin's own C++ module (from the plugin templates' `{{plugin}}Module.cpp.tera`) calls `<Plugin>_RustealFillFuncTable()` and `RustealRegisterPluginLibrary("<Plugin>", <Plugin>_RustealGetFuncTable(), <Plugin>_RustealGetFuncCount())` when it starts, and `RustealUnregisterLibrary` when it stops: its library is `<Plugin>/Binaries/<Platform>/librusteal_<Plugin>.<ext>`, its package `/Script/<Plugin>`. The game's library loads first, each plugin's when its module starts.
 
@@ -29,7 +29,7 @@ A Rusteal plugin's own C++ module (from the plugin templates' `{{plugin}}Module.
 
 **Versions** are encoded as `major * 1_000_000 + minor * 1_000 + patch` (`rusteal_ffi::encode_version`, a `const fn` that refuses minor or patch ≥ 1000 and pre-release suffixes at compile time). Exact equality is the only compatibility check: the table has no size or field count.
 
-**`UnloadLibrary`** calls `on_shutdown` and the `rusteal_shutdown` export (which calls `on_shutdown` again: it runs twice and must stay idempotent), forgets the library's pinned objects and console commands, frees the handle and deletes its load copy. `ShutdownModule` removes the ticker and unloads every library in registration order. Reloading is in [Hot reload](hot_reload.md).
+**`UnloadLibrary`** calls `on_shutdown` and the `rusteal_shutdown` export (which calls `on_shutdown` again: it runs twice and must stay idempotent), forgets the library's pinned objects and console commands, frees the handle and deletes its load copy. On macOS freeing the handle does not unload the library: `dlclose` never unloads a Rust library there (an image with thread-local variables stays loaded), so its code stays mapped until the editor exits. `ShutdownModule` removes the ticker and unloads every library in registration order. Reloading is in [Hot reload](hot_reload.md).
 
 ## The current library (`Private/RustealLibrary.h`)
 
