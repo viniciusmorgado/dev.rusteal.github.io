@@ -36,7 +36,7 @@ Because everything is generated, the bindings follow the engine: a new engine ve
 
 ## Crossing the boundary
 
-The Rust code is compiled into a shared library (`librusteal.so`, `rusteal.dll`) that the Rusteal plugin loads at startup. The two sides talk through a single, versioned contract defined in `rusteal-ffi`: plain `#[repr(C)]` types and **tables of function pointers**.
+The Rust code is compiled into a shared library (`librusteal.so`, `librusteal.dylib`, `rusteal.dll`) that the Rusteal plugin loads at startup. The two sides talk through a single, versioned contract defined in `rusteal-ffi`: plain `#[repr(C)]` types and **tables of function pointers**.
 
 - **The API table** holds the plugin's own services: object lifetime, properties, delegates, containers, input, worlds, and the reification of Rust classes. The plugin hands it to the library when it loads it.
 - **The function table** holds a pointer to every generated C++ wrapper. Calling `actor.k2_get_actor_location()` in Rust looks up the wrapper in that table and calls it; the wrapper casts the object and calls `AActor::K2_GetActorLocation` directly, with no interpreter and no `ProcessEvent` in between.

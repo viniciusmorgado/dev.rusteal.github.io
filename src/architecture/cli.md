@@ -46,7 +46,7 @@ The command line is a clap `Parser`; `rusteal --version` is the crate's version.
 2. **Codegen.** `run_generate` for the game, `run_generate_plugin` for each plugin (see [Code generation](codegen.md)).
 3. **UE rebuild.** UBT again, which compiles the generated wrappers.
 4. **Cargo.** It needs `<workspace>/bindings/src/func_ids.rs` (missing: "run `rusteal build --all` once"), then runs `cargo build --manifest-path <workspace>/<crate>/Cargo.toml` (or the workspace's with `-p <crate>`), with `--release` and `--features` as asked.
-5. **Deploy.** The library in `target/<debug|release>/` is copied to `<dest>.partial` and renamed over `librusteal.so` (`librusteal_<Plugin>.so`). The deployed file is replaced, a new inode, never written into: the plugin hard-links it into its load copy (see [Hot reload](hot_reload.md)), and the editor's directory watcher must never see a half-written library.
+5. **Deploy.** The library in `target/<debug|release>/` is copied to `<dest>.partial` and renamed over `librusteal.so` (`librusteal_<Plugin>.so`, `.dylib` on macOS). The deployed file is replaced, a new inode, never written into: on Linux the plugin hard-links it into its load copy (see [Hot reload](hot_reload.md)), and the editor's directory watcher must never see a half-written library.
 
 `-NoHotReload` keeps UBT from producing hot-reload module names, so a build with the editor open does not fight the editor's own modules. The CLI does not check whether the editor is running: steps 1 to 3 rebuild C++ the open editor has loaded, which is why changing the plugin or the bindings needs an editor restart, and steps 4 and 5 are made to run with it open.
 
@@ -108,7 +108,7 @@ A project's pins are `rusteal-runtime`, `rusteal-core` and `rusteal-ffi` in `Rus
 
 ## The engine path (`src/global_config.rs`)
 
-`<config dir>/rusteal/config.toml` (`~/.config/rusteal/config.toml` on Linux) holds `[engine] path`. When it is empty, the CLI asks once for the engine root, until the directory has `Engine/Build/BatchFiles`, and saves it; without a terminal it exits with the setting to write. This is the only per-machine setting a game project depends on; contributors have `.env` for theirs, which the CLI never reads.
+`<config dir>/rusteal/config.toml` (`~/.config/rusteal/config.toml` on Linux, `~/Library/Application Support/rusteal/config.toml` on macOS, `%APPDATA%\rusteal\config.toml` on Windows: the `dirs` crate's config directory) holds `[engine] path`. When it is empty, the CLI asks once for the engine root, until the directory has `Engine/Build/BatchFiles`, and saves it; without a terminal it exits with the setting to write. This is the only per-machine setting a game project depends on; contributors have `.env` for theirs, which the CLI never reads.
 
 ## Tests
 

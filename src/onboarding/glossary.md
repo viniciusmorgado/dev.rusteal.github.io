@@ -13,13 +13,13 @@
 | **Exporter** | `RustealExporter`, the C# UHT plugin writing the reflection JSON. |
 | **Feature** | A piece of gameplay any template can take (a plugin template with a `[feature]` table), or a set of project files (`project_features/`). Not to be confused with a Cargo feature, which gates an engine module in the bindings. |
 | **Func id / function table** | The number codegen gives each wrapped engine function, and the table of wrapper pointers indexed by it. |
-| **Game library** | The game's Rust `cdylib`, deployed as `Plugins/Rusteal/Binaries/<Platform>/librusteal.so`, classes in `/Script/Rusteal`. |
-| **Hot copy** | `<stem>_hot_<N>.<ext>`: the numbered link or copy of a deployed library the plugin actually loads. |
+| **Game library** | The game's Rust `cdylib`, deployed as `Plugins/Rusteal/Binaries/<Platform>/librusteal.so` (`.dylib` on macOS, `rusteal.dll` on Windows), classes in `/Script/Rusteal`. |
+| **Hot copy** | `<stem>_hot_<N>.<ext>`: the numbered hard link (Linux) or copy (macOS, Windows) of a deployed library the plugin actually loads. |
 | **Hot reload** | Swapping a library while the editor runs (`Rusteal.Reload`, automatic on deploy). |
 | **Library** | A Rust shared library the plugin hosts: the game's or a Rusteal plugin's. |
 | **`manual/`** | Hand-written extensions codegen copies into every bindings crate, for what reflection cannot describe. |
 | **Pinned** | `Pinned<T>`: a GC root that keeps an object alive for Rust. |
-| **Plugin library** | A Rusteal plugin's own library, `librusteal_<Plugin>.so`, classes in `/Script/<Plugin>`. |
+| **Plugin library** | A Rusteal plugin's own library, `librusteal_<Plugin>.so` (`.dylib` on macOS, `rusteal_<Plugin>.dll` on Windows), classes in `/Script/<Plugin>`. |
 | **Reify / reified class** | Creating a Rust type as a real Unreal type at load time; `URustealReifiedClass` is the class behind a `#[uclass]`. |
 | **Reinstance** | Moving existing objects and Blueprints to a replaced class, with the engine's `FReload`. |
 | **Rust data** | An object's Rust-private fields, kept by the registry outside the object's memory. |

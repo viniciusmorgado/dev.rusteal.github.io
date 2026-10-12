@@ -16,7 +16,7 @@ Every one of those crashes came within two seconds of `AcquireNextImage() failed
 
 `r.Vulkan.CpuWaitForFence=0` makes the engine wait on a GPU semaphore and never call `vkWaitForFences` there. Epic already ships it as the default on Android (`Engine/Config/Android/AndroidEngine.ini`: "Use semaphores instead of fences for image wait"). The variable is `ReadOnly`: the console refuses it, but it is read at RHI start-up from the `[ConsoleVariables]` section of the Engine config, so it has to be in an `.ini`, not set from code at run time. With it in place the crashes stopped.
 
-A packaged game runs the same `VulkanRHI`, and its swapchain goes out of date on resize, fullscreen toggles, alt-tab and resolution changes: players on Linux with NVIDIA are exposed too. On Windows the projects use DirectX 12 and the path never runs.
+A packaged game runs the same `VulkanRHI`, and its swapchain goes out of date on resize, fullscreen toggles, alt-tab and resolution changes: players on Linux with NVIDIA are exposed too. On Windows the projects use DirectX 12 and on macOS Metal, and the path never runs.
 
 ## Where an `.ini` setting can go
 
@@ -62,11 +62,11 @@ An engine-level change is per machine and invisible to the project: keep it out 
 
 `[optimizations.<platform>.<File>.<Section>]`, with the platforms `linux`, `windows` and `mac` and any config file name (`Engine`, `Game`, `Input`, ...). The section name is the `.ini` section, quoted when it has dots or slashes (`"/Script/Engine.RendererSettings"`). Values are TOML strings, integers, floats or booleans, written as the engine reads them (`True`, `False`).
 
-The default table is `rusteal-cli/optimizations.toml`, embedded in the CLI (`optimizations::DEFAULTS`). Every template's `rusteal.toml.tera` ends with the same text, so a new project shows its optimizations and the game developer edits them in place. `every_template_carries_the_default_optimizations` fails if a template drifts from the defaults: change `optimizations.toml` and the templates together. A project whose `rusteal.toml` has no `[optimizations]` table, every project made before this existed, gets the defaults; an empty `[optimizations]` table means none. Unknown platforms and non-scalar values are refused when the file is read.
+The default table is `rusteal-cli/optimizations.toml`, embedded in the CLI (`optimizations::DEFAULTS`). It has nothing for `windows` or `mac` yet. Every template's `rusteal.toml.tera` ends with the same text, so a new project shows its optimizations and the game developer edits them in place. `every_template_carries_the_default_optimizations` fails if a template drifts from the defaults: change `optimizations.toml` and the templates together. A project whose `rusteal.toml` has no `[optimizations]` table, every project made before this existed, gets the defaults; an empty `[optimizations]` table means none. Unknown platforms and non-scalar values are refused when the file is read.
 
 ## Written by the CLI, chosen at compile time
 
-`rusteal-cli/src/optimizations.rs`. The platform is not detected at run time: `optimizations::HOST` is a `#[cfg(target_os = ...)]` constant, as `build_cmd::HostPlatform::CURRENT`. The Linux CLI only ever writes `optimizations.linux` into `Config/Linux/`, the Windows CLI only `optimizations.windows` into `Config/Windows/`. A Windows machine never touches the Linux settings, and the engine stages `Config/Linux` for Linux builds only, so a Windows package carries none of them.
+`rusteal-cli/src/optimizations.rs`. The platform is not detected at run time: `optimizations::HOST` is a `#[cfg(target_os = ...)]` constant, as `build_cmd::HostPlatform::CURRENT`. The Linux CLI only ever writes `optimizations.linux` into `Config/Linux/`, the Windows CLI only `optimizations.windows` into `Config/Windows/`, the macOS CLI only `optimizations.mac` into `Config/Mac/`. A Windows or macOS machine never touches the Linux settings, and the engine stages `Config/Linux` for Linux builds only, so a Windows or macOS package carries none of them.
 
 The settings are the same on every Linux machine, whatever its GPU. Writing them only where an NVIDIA card is found was rejected: the file is versioned, and machines that disagree would rewrite it back and forth in every commit; the player's GPU is unknown at package time anyway; and the setting costs nothing on other drivers.
 
