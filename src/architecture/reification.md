@@ -6,7 +6,7 @@ A `#[uclass]` struct becomes a real `UClass` when its library loads: Rusteal **r
 
 Only four procedural macros exist, and `rusteal-runtime` re-exports them: `#[uclass]`, `#[uclass_impl]`, `#[ustruct]` and `#[uenum]`. `#[uproperty]`, `#[component]`, `#[ufunction]`, `#[class_defaults]` and `#[udelegate]` are inert attributes that the outer macro parses and strips.
 
-**Names** (`prop_type.rs`): a Rust name becomes the Unreal one in PascalCase (`move_speed` → `MoveSpeed`), with `b_` turned into UE's bool prefix (`b_can_dash` → `bCanDash`); `name = "..."` overrides it. A type's id is the FNV-1a hash of its identifier (not its module path), and a parent's id the hash of the parent path's last segment: two Rust classes with the same name in one library collide.
+**Names** (`prop_type.rs`): a Rust name becomes the Unreal one in PascalCase (`move_speed` → `MoveSpeed`), with `b_` turned into UE's bool prefix (`b_can_dash` → `bCanDash`); `name = "..."` overrides it. A type's id is the FNV-1a hash of its module path and identifier (`rusteal_core::type_id(concat!(module_path!(), "::", "Name"))`, computed at compile time), so classes with the same name in two crates or two modules have different ids; `#[uclass]` gives it as `UeClass::RUST_TYPE_ID`, which is 0 for engine classes, and a class's parent and components contribute theirs through it. Two classes with the same name in one library still share an Unreal name in the library's package, which the engine refuses.
 
 ### `#[uclass]` (`uclass.rs`)
 
@@ -46,7 +46,7 @@ A property's type is one of `bool`, `i32`, `i64`, `u8`, `f32`, `f64`, `UObjectRe
 3. For each property, a getter and a `set_` setter that look up the `FPropertyHandle` once (a `static OnceLock` per accessor) and then call `property_get_*`/`property_set_*`; an array gets a getter returning a `UeArray` view. For each private field, `x()` (a clone), `set_x()` and `x_mut()`. For each component, a getter returning it from `reify_find_default_subobject`.
 4. `as_ref()`, `from_obj(obj)` (validity, `IsA`, then the instance data; null data means the library was reloaded or unloaded), `get_default()` (the default object).
 5. Hidden registration functions: `__rusteal_register_<name>` (find the parent, register the `RustTypeInfo` whose construct is `Box::into_raw(Box::new(Default::default()))`, call `reify_create_class`), `__rusteal_members_<name>` (properties, interfaces, components), `__rusteal_finalize_<name>` (`reify_finalize_class`, then the `default =` values on the default object), `__rusteal_after_defaults_<name>` (`reify_set_class_config` for `config`).
-6. `inventory::submit!(ClassRegistration { type_id, shape, depends_on, create, register, finalize, after_defaults })`, `depends_on` being the parent's and the components' ids.
+6. `inventory::submit!(ClassRegistration { krate, name, type_id, shape, depends_on, create, register, finalize, after_defaults })`, `krate` being the crate that declared it (`env!("CARGO_CRATE_NAME")`) and `depends_on` the parent's and the components' `RUST_TYPE_ID`s.
 
 ### `#[uclass_impl]` (`uclass_impl.rs`)
 
@@ -66,7 +66,7 @@ Parameters are scalars, `UObjectRef`, `SubclassOf`, `UStructRef`, enums and `Out
 
 `#[class_defaults]` (one per block, `&mut self`) runs on the class default object after `finalize`; a `RustealResult<()>` it returns is logged on error. `#[udelegate]` (an empty `&self` method, `name` optional) declares a multicast delegate: its body becomes a broadcast, and the macro adds `<name>_add(closure)` and `<name>_add_ufunction(target, "Function")`.
 
-The expansion registers each function with a closure (`register_function`, whose returned index is the callback id), then `reify_add_function` and its parameters with `CPF_Parm` (and a `ReturnValue` with `CPF_ReturnParm`); events get callback id 0. It submits a `ClassFunctionRegistration { type_id, shape, register_functions, class_defaults }`.
+The expansion registers each function with a closure (`register_function`, whose returned index is the callback id), then `reify_add_function` and its parameters with `CPF_Parm` (and a `ReturnValue` with `CPF_ReturnParm`); events get callback id 0. It submits a `ClassFunctionRegistration { krate, type_id, shape, register_functions, class_defaults }`.
 
 ### `#[ustruct]` and `#[uenum]`
 
@@ -80,11 +80,12 @@ Each macro hashes its declarations: the sorted list of the attribute tokens with
 
 | Store | What it holds |
 |---|---|
-| `TYPE_REGISTRY` | `type_id` → `RustTypeInfo` (construct and drop functions). |
-| `FUNC_REGISTRY` | A `Vec` of `FunctionEntry { callback, type_id }`; the callback id is the index. |
+| `TYPE_REGISTRY` | `type_id` → the module that registered it and its `RustTypeInfo` (construct and drop functions). A type id already registered by another module is refused with an error. |
+| `FUNC_REGISTRY` | A `Vec` of `FunctionEntry { callback, type_id, module }` slots; the callback id is the index, and a cleared module's slots are emptied, never reused while another module holds callbacks. |
 | `INSTANCE_DATA` | The object's address → one `InstanceEntry { data, type_id }` per reified class in its chain (a Blueprint child of a Rust class of a Rust class has two). |
 
-- `construct_instance(obj, type_id)` builds the data and stores it, replacing an existing entry of that type; `drop_instance(obj)` drops every entry of the address; `clear_all` drops everything when the library shuts down.
+- `register_module(module)` runs the registration of the types whose crate the module owns (every crate, in a dynamic library); `manifest(owned)` lists them as `kind:crate:name` entries (`impl:crate:<type id>` for impl blocks), which a static build checks (see [Static linking](boundary.md#static-linking)).
+- `construct_instance(obj, type_id)` builds the data and stores it, replacing an existing entry of that type; `drop_instance(obj)` drops the entries of the address whose types belong to the current module, which is what C++ calls once per library of the chain; `clear_module` drops a module's types, functions and data when it shuts down.
 - **A call from the engine** reaches `invoke_function(id, obj, params)`: the entry is cloned, the instance data found by type, and the generated closure runs. It caches the parameters' offsets (reflection, once), reads each with `native_mem_read` (or as a `UStructRef`/`OutRef` into the buffer), zero-initializes the return slot, builds a temporary `Self { __obj, __rust_data }`, calls the method, raises an `Err`, and writes the return value back (`reflection_copy_struct` for a struct).
 
 ## The C++ side

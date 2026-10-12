@@ -58,6 +58,8 @@ When the module starts, it:
 3. hands each one the **API table**, a struct of function pointers to the module's services;
 4. calls the library's `rusteal_init`.
 
+A game packaged with `--static` has no library files: the Rust code is linked into the game, and the module finds each library's entry points by name in it instead (see [Static linking](boundary.md#static-linking)).
+
 From then on, Rust calls the engine through that table, and the engine calls Rust through the callbacks the library returns.
 
 Its sources, by role:
@@ -214,7 +216,7 @@ The macros generate typed accessors for each property, plus the registration `ru
 
 It has two macros:
 
-- `entry!()` generates the entry points the library exports, which the plugin looks up by name: `rusteal_init`, `rusteal_shutdown`, `rusteal_version` and `rusteal_callbacks`;
+- `entry!()` generates the library's module and its entry points, which the plugin looks up by name in a dynamic library: `rusteal_init`, `rusteal_shutdown`, `rusteal_version` and `rusteal_callbacks`;
 - `on_load!` runs code on every load, hot reloads included.
 
 The engine's types are not here. They come from the project's own generated bindings crate.

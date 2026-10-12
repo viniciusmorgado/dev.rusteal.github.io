@@ -104,9 +104,9 @@ functions = ["AnimMontage.IsValidAdditiveSlot"]
 
 ### The bindings crate (`rust_gen/`)
 
-`Rust/bindings/` (or `<Plugin>/Rust/bindings/`): package `bindings`, edition 2024, on `rusteal-core`, `rusteal-ffi` and `glam`; `[features]` with every enabled feature on by default, each listing the features its modules reference; a README saying the crate is generated and committed with the game.
+`Rust/bindings/` (or `<Plugin>/Rust/bindings/`): package `<crate>-bindings` (the library's crate from `rusteal.toml`, `config::bindings_package`), which the library's crate imports as `bindings` (`bindings = { package = "<crate>-bindings", path = "../bindings" }`), so every library of a project has its own package; edition 2024, on `rusteal-core`, `rusteal-ffi` and `glam`; `[features]` with every enabled feature on by default, each listing the features its modules reference; a README saying the crate is generated and committed with the game.
 
-- `src/lib.rs`: `func_ids`, one `#[cfg(feature)]` module per engine module, `manual`, `prelude`.
+- `src/lib.rs`: `func_ids` (the ids, `FUNC_COUNT` and the `FINGERPRINT` of the table), `__RUSTEAL_FUNCS` (the crate's `FuncTable`, which `entry!()` binds when the library starts; see [The Rust–C++ boundary](boundary.md#the-engine-functions-table)), one `#[cfg(feature)]` module per engine module, `manual`, `prelude`.
 - One file per type. A class is a unit struct with `UeClass` (`static_class` through reflection), `HasParent`, `Inherits` for every ancestor, and a `<Name>Ext` trait for `Checked<Name>` and `Pinned<Name>` with its property accessors (found by name once, `OnceLock`), delegate accessors and instance functions; static functions are inherent. Inherited members come from the parent's trait, not copies. Generated modules start with `#![allow(clippy::all)]`.
 - A struct is an opaque `F<Name>` with a `F<Name>Ext` trait for `UStructRef<F<Name>>`; an enum is `#[repr]` with `UeEnum`.
 - `src/prelude.rs` re-exports a fixed table per feature (`core`, `engine`, `umg`, `input`, `enhanced-input`).
@@ -118,10 +118,10 @@ functions = ["AnimMontage.IsValidAdditiveSlot"]
 Written into the host module's `Generated/`:
 
 - `RustealFunc_<module>_<Class>.cpp`: one `extern "C"` wrapper per function. A protected function goes through `struct FAccess : UClass { using UClass::Func; }`, a `BlueprintNativeEvent` calls `Func_Implementation`, an interface function casts to the interface, a static one calls the class. Strings are pointer and length (out strings, a buffer and its length), structs are copied as bytes, containers are passed as base and property.
-- `RustealFuncIds.h` and `RustealFillFuncTable.cpp` (see [The Rust–C++ boundary](boundary.md)).
+- `RustealFuncIds.h` (with `FUNC_FINGERPRINT`) and `RustealFillFuncTable.cpp` (with `<prefix>RustealGetFuncFingerprint()`) (see [The Rust–C++ boundary](boundary.md)).
 - `module_deps.txt`: `Core` and every enabled package except the host module, one per line; `Rusteal.Build.cs` adds them as public dependencies, a plugin's `Build.cs` as private ones.
 
-`rusteal setup` writes stubs of these files before codegen ever ran, so the plugin compiles from the start.
+`rusteal setup` writes stubs of these files before codegen ever ran, so the plugin compiles from the start; it also replaces generated files that an older Rusteal wrote (without `RustealGetFuncFingerprint`, which the plugin's module now calls) with stubs, until step 2 generates them again.
 
 ## A plugin's library
 
@@ -148,7 +148,7 @@ Same pipeline, with `[plugin]` instead of `[project]`, the project's JSON as inp
 |---|---|
 | `manual_compiles_against_generated_bindings` | The bindings and `manual/` compile with `core`, `engine`, `input`, `slate`, `umg`. |
 | `enhanced_input_bindings` | The C++ wrappers' interface casts, `FAccess`, container returns and includes; the module is removed when its feature is. |
-| `uclass_types_compile` | A game crate using every macro compiles against the bindings. |
+| `uclass_types_compile` | A game crate using every macro, with `entry!()` and `on_load!` under `#![deny(unsafe_code)]`, compiles against the bindings, imported as `bindings` from their package. |
 | `regenerate_fixture` (ignored) | Rewrites the fixture from a project's JSON: `RUSTEAL_UHT_DIR=<project>/Intermediate/Rusteal/uht cargo test -p rusteal-codegen --test manual_compiles regenerate_fixture -- --ignored`. |
 
-Unit tests cover the config, names, filters, properties and the table's symbol prefixes. Run them with `cargo test -p rusteal-codegen`.
+Unit tests cover the config, names, filters, properties, the table's symbol prefixes and its fingerprint. Run them with `cargo test -p rusteal-codegen`.

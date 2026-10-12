@@ -15,7 +15,8 @@ The command line is a clap `Parser`; `rusteal --version` is the crate's version.
 | `build [project]` | `--all`, `--step N`, `--from N`, `--release`, `--plugin` | `build_cmd::run_build` |
 | `watch [project]` | `--plugin`, `--optimizations` | `watch_cmd::run_watch` |
 | `generate [project]` | | `rusteal_codegen::run_generate`, then `run_generate_plugin` for each plugin |
-| `package [project]` | `--output` (`<root>/Packaged`), `--shipping`, `--optimizations` | `package_cmd::run_package` |
+| `package [project]` | `--output` (`<root>/Packaged`), `--shipping`, `--static`, `--platform`, `--optimizations` | `package_cmd::run_package` |
+| `platform list` / `platform show <name>` | | `platform::builtins`, `platform::find` |
 | `upgrade [project]` | | `upgrade_cmd::run_upgrade` |
 | `sync-plugin` | | `sync_plugin::run_sync` |
 
@@ -27,7 +28,7 @@ The command line is a clap `Parser`; `rusteal --version` is the crate's version.
 
 ## The build (`src/build_cmd.rs`)
 
-`HostPlatform::CURRENT` is chosen with `#[cfg(target_os)]`: the CLI only builds for the platform it was compiled for.
+`HostPlatform::CURRENT` is chosen with `#[cfg(target_os)]`: the host is the platform the CLI was compiled for, which runs UBT, UAT and the editor, and the editor's libraries are always built for it. What a game is packaged for is a separate **target platform** (`src/platform.rs`, below).
 
 | Platform | UBT | UAT | Library |
 |---|---|---|---|
@@ -45,7 +46,7 @@ The command line is a clap `Parser`; `rusteal --version` is the crate's version.
 1. **UE build.** `<engine>/<UBT> <Project>Editor <Platform> Development -Project=<uproject> -NoHotReload` (`run_ubt`; on Windows `canonical_no_prefix` strips the `\\?\` prefix). UHT runs the exporter during it; the step then copies `rusteal_classes.json`, `rusteal_structs.json` and `rusteal_enums.json` from `Plugins/RustealGenerator/Intermediate/Build/<Platform>/UnrealEditor/Inc/RustealGenerator/UHT/` to `<root>/Intermediate/Rusteal/uht/`.
 2. **Codegen.** `run_generate` for the game, `run_generate_plugin` for each plugin (see [Code generation](codegen.md)).
 3. **UE rebuild.** UBT again, which compiles the generated wrappers.
-4. **Cargo.** It needs `<workspace>/bindings/src/func_ids.rs` (missing: "run `rusteal build --all` once"), then runs `cargo build --manifest-path <workspace>/<crate>/Cargo.toml` (or the workspace's with `-p <crate>`), with `--release` and `--features` as asked.
+4. **Cargo.** It needs `<workspace>/bindings/src/func_ids.rs` (missing: "run `rusteal build --all` once"), brings the workspace up to the bindings package's name (`migrate::bindings_dependency`, also run after step 2), then runs `cargo build --manifest-path <workspace>/<crate>/Cargo.toml` (or the workspace's with `-p <crate>`), with `--release` and `--features` as asked.
 5. **Deploy.** The library in `target/<debug|release>/` is copied to `<dest>.partial` and renamed over `librusteal.so` (`librusteal_<Plugin>.so`, `.dylib` on macOS). The deployed file is replaced, a new inode, never written into: on Linux the plugin hard-links it into its load copy (see [Hot reload](hot_reload.md)), and the editor's directory watcher must never see a half-written library.
 
 `-NoHotReload` keeps UBT from producing hot-reload module names, so a build with the editor open does not fight the editor's own modules. The CLI does not check whether the editor is running: steps 1 to 3 rebuild C++ the open editor has loaded, which is why changing the plugin or the bindings needs an editor restart, and steps 4 and 5 are made to run with it open.
@@ -64,7 +65,7 @@ Polling, so it needs no dependency and behaves the same on every platform: every
 2. Writes `Plugins/RustealGenerator/Source/RustealExporter/RustealExporter.ubtplugin.csproj.props` with `<EngineDir>`, so the exporter's C# project finds the engine.
 3. Without a `rusteal.toml`, renders the blank template's (`templates::render_rusteal_toml`), with the crate name `crate_name_for` derives from the project (`MyGame` → `my-game`).
 4. Adds `Rusteal` and `RustealGenerator` to the `.uproject`'s `Plugins`.
-5. Unless `RustealFuncIds.h` exists, writes C++ stubs in `Plugins/Rusteal/Source/Rusteal/Generated/` (`RustealFuncIds.h` with `FUNC_COUNT = 0`, `RustealFillFuncTable.cpp`, `module_deps.txt` with `Core`, `CoreUObject`, `Engine`), so the plugin compiles before codegen ever ran; plugins get the same with the prefix `<Plugin>_`.
+5. Unless `RustealFuncIds.h` exists, writes C++ stubs in `Plugins/Rusteal/Source/Rusteal/Generated/` (`RustealFuncIds.h` with `FUNC_COUNT = 0` and `FUNC_FINGERPRINT = 0`, `RustealFillFuncTable.cpp`, `module_deps.txt` with `Core`, `CoreUObject`, `Engine`), so the plugin compiles before codegen ever ran; plugins get the same with the prefix `<Plugin>_`. Generated files without `RustealGetFuncFingerprint` (an older Rusteal's) are deleted and replaced by the stubs. It also writes `Generated/static_link.txt` (`0`) when it is missing.
 
 The project's `.gitignore` comes from the templates (`.gitignore.tera`), not from `setup`.
 
@@ -97,8 +98,31 @@ It skips `Generated`, `Binaries`, `Intermediate`, `obj` and `*.csproj.props`. In
 ## Plugins and packaging (`src/plugin_cmd.rs`, `src/package_cmd.rs`)
 
 - **`plugin new`**: a name of 1 to 32 letters and digits, starting with a letter, not `Rusteal`, `RustealGenerator`, `RustealEditor` nor the project's; a feature carrying `Content/` keeps its fixed plugin name. It renders the template into `Plugins/<Name>/` (context `plugin`, `crate_name`, `version`, `glam_version`, and `runtime_path` when the project follows a checkout), writes the bindings placeholder and the prefixed C++ stubs, enables the plugin in the `.uproject`, copies its shared packs and builds.
-- **`package`**: the five steps in release, a `Snapshot` of the host's `Config/<Platform>/*.ini`, the platform optimizations, `RunUAT BuildCookRun -project= -platform= -clientconfig=<Development|Shipping> -build -cook -stage -pak -archive -archivedirectory=<out> -nop4 -unattended -utf8output` (and `-package` on Mac), the snapshot restored, then UAT's exit code. On Mac with Xcode 27 or newer, UAT runs with `DEVELOPER_DIR` pointing at the `xcodebuild` workaround (`src/xcode_shim.rs`, see [Platform optimizations](../internals/platform_optimizations.md#macos-xcodebuild-without-a-stdin)).
+- **`package`**: the five steps in release (the editor libraries, which the cook loads), a `Snapshot` of the host's `Config/<Platform>/*.ini`, the platform optimizations, `RunUAT BuildCookRun -project= -platform= -clientconfig=<Development|Shipping> -build -cook -stage -pak -archive -archivedirectory=<out> -nop4 -unattended -utf8output`, then the target platform's `uat_args` (`-package` for the built-in Mac), the snapshot restored, then UAT's exit code. On Mac with Xcode 27 or newer, UAT runs with `DEVELOPER_DIR` pointing at the `xcodebuild` workaround (`src/xcode_shim.rs`, see [Platform optimizations](../internals/platform_optimizations.md#macos-xcodebuild-without-a-stdin)).
+- **`package --static`** (`src/static_link.rs`) builds the Rust code into the game instead (see [Static linking](boundary.md#static-linking)) before running UAT:
+  1. the libraries: the game's and every runtime plugin's (editor plugins are left out), each `crate-type` given `"rlib"` when it lacks it (`migrate::crate_types`);
+  2. the workspace in `Intermediate/Rusteal/Static/`: `Cargo.toml` (the Rusteal runtime as the project pins it, exact or from its checkout, with `static-link`; each library's crate by path, with its features; the release profile with fat LTO and one codegen unit; `debug = false` for the dev profile), the `archive` and `manifest` members, the game's `Cargo.lock` copied the first time;
+  3. `cargo metadata`, for the crates each library owns (`static_link::ownership`);
+  4. `cargo run -p rusteal-static-manifest` (dev profile, host), whose lines are every registration, grouped by library (`group_expected`);
+  5. `archive/src/lib.rs` written with both, and `cargo rustc -p rusteal-static --lib --release -- --print=native-static-libs` (with the target platform's toolchain, `--target`, `cargo_args`, `rustflags` and `env`), whose note gives the system libraries (`parse_native_libs`), to which the platform's `system_libraries` are added;
+  6. with the engine allocator (default), the `archive` member enables `rusteal-runtime`'s `engine-allocator` and its `lib.rs` sets `#[global_allocator]`; `[static] engine_allocator = false` leaves both out;
+  7. the archive copied to `Plugins/Rusteal/Source/ThirdParty/RustealStatic/lib/<Platform>/` with `link.txt`, and `Generated/static_link.txt` set to `1` until UAT returns;
+  8. after UAT, any Rust dynamic library found in the output is reported: a plugin whose `Build.cs` predates `Rusteal.AddRustLibrary` stages its own.
 - **`plugin package`**: a release build of that plugin, then a copy of its directory without `Intermediate`, `Saved`, `DerivedDataCache`, `Rust/target`, `obj`, and the `_hot_`, `.debug` and `.pdb` files of `Binaries/`.
+
+## Target platforms (`src/platform.rs`)
+
+`Platform` is a packaging target, serialized as `[platform]` in TOML (`deny_unknown_fields`): `name` (the engine's platform name, passed to `BuildCookRun -platform=`), `rust_target` (a triple, or a target JSON resolved from the definition's directory; none means the host's), `toolchain` (`cargo +<toolchain>`), `build_std` (`-Zbuild-std=<crates>`), `cargo_args`, `rustflags` (`RUSTFLAGS`), `env`, `static_archive` (the archive's file name), `dynamic_library` (`prefix` and `extension`; none for a platform that only links statically), `system_libraries` (added to `link.txt`) and `uat_args`.
+
+- `builtins()`: Linux, LinuxArm64 (`aarch64-unknown-linux-gnu`), Win64 and Mac.
+- `find(name or file, dirs)`: a path ending in `.toml`, or an existing file, is loaded; otherwise a `<name>.toml` (case-insensitive) in `RUSTEAL_PLATFORM_PATH`'s directories and then `<config dir>/rusteal/platforms/`, and only then a built-in, so a definition file can replace one; an unknown name is refused, naming the built-ins and the directories searched.
+- `package` resolves `--platform` (the host's name by default). Without `--static`, a target that is not the host, or has no dynamic library, is refused.
+
+The private platform pack of a console is a definition file there, its target JSON and its toolchain: see [Consoles](../platforms/consoles.md).
+
+## The console check (`src/console_check.rs`)
+
+With `[consoles] check = true` in `rusteal.toml`, a build that runs step 4 lists, as warnings, each line of the libraries' workspaces that names `std::thread`, `std::time::Instant` or `std::time::SystemTime` (comments aside; `target/` and `bindings/` skipped), and each package of their `Cargo.lock` known to start threads or use the OS's I/O (`rayon-core`, `tokio`, `async-std`, `smol`, `threadpool`, `mio`). It refuses nothing.
 
 ## Versions (`src/project_version.rs`, `src/upgrade_cmd.rs`)
 
@@ -121,6 +145,10 @@ A project's pins are `rusteal-runtime`, `rusteal-core` and `rusteal-ffi` in `Rus
 | `templates.rs` | The template list, valid manifests, bundled features that exist, the default optimizations in every `rusteal.toml.tera`, the feature invariants, the RustRover files, loose names, rendered paths. |
 | `new_cmd.rs` | Writable copies, the game module of Blueprint-only templates, the default map. |
 | `package_cmd.rs` | The plugin package exclusions. |
+| `platform.rs` | The built-in definitions round-trip through TOML, the host's names its libraries as the build does, a console definition (target JSON resolved, `build-std`), unknown fields and platforms refused, files found by name and preferred to built-ins. |
+| `console_check.rs` | `std` threads and clocks found in code, not comments; threaded crates in `Cargo.lock`; off unless asked. |
+| `static_link.rs` | The static workspace and its runtime pin, the engine allocator on or off, the archive's library list, ownership through local crates (shared crates refused), registrations grouped by library, rustc's system libraries for Linux, Windows and macOS, the staged library report. |
+| `migrate.rs` | The bindings dependency and profile, `crate-type`, rewritten once and only there. |
 | `project_version.rs`, `upgrade_cmd.rs` | Pin parsing and comparison; `rewrite_pins` touches only the pins. |
 | `optimizations.rs` | The optimizations' block, user values, untouched files, the snapshot. |
 | `bin/cargo-rusteal.rs` | Argument forwarding. |
