@@ -16,7 +16,7 @@ UHT ──▶ RustealExporter (C#) ──▶ rusteal_{classes,structs,enums}.jso
 
 ## The exporter (`ue_plugin/RustealGenerator/Source/RustealExporter/`)
 
-`RustealExport.cs` is a plugin of the Unreal Header Tool: `[UnrealHeaderTool] static class RustealExport` with `[UhtExporter(Name = "Rusteal", ModuleName = "RustealGenerator")]` on `Generate`. `RustealExporter.ubtplugin.csproj` builds it for .NET into `Engine/Binaries/DotNET/UnrealBuildTool/Plugins/RustealExporter/`, with `EngineDir` taken from the per-machine `RustealExporter.ubtplugin.csproj.props` (`rusteal setup` writes it in a project, `cargo xtask dev-setup` in the checkout). The `RustealGenerator` module is an empty editor module: it only exists so UHT's manifest has a module for the exporter's output.
+`RustealExport.cs` is a plugin of the Unreal Header Tool: `[UnrealHeaderTool] static class RustealExport` with `[UhtExporter(Name = "Rusteal", ModuleName = "RustealGenerator")]` on `Generate`. `RustealExporter.ubtplugin.csproj` builds it for .NET into the plugin's own `Binaries/DotNET/UnrealBuildTool/Plugins/RustealExporter/`, a path relative to the `.csproj` (decision D6), with `EngineDir` taken from the per-machine `RustealExporter.ubtplugin.csproj.props` (`rusteal setup` writes it in a project, `cargo xtask dev-setup` in the checkout). The `RustealGenerator` module is an empty editor module: it only exists so UHT's manifest has a module for the exporter's output.
 
 It walks every module of the UHT session and writes three indented JSON files next to the module's UHT output: `rusteal_classes.json`, `rusteal_structs.json`, `rusteal_enums.json`. Step 1 of `rusteal build` copies them to `<project>/Intermediate/Rusteal/uht/`.
 
