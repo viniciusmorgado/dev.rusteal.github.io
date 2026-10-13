@@ -10,7 +10,7 @@ cargo test --workspace
 cargo clippy --workspace --all-targets --no-deps -- -D warnings
 ```
 
-That is what CI runs on every pull request, on Linux only: the Windows and macOS code paths (`#[cfg(target_os)]`) are only built on those machines, so run it there too when you change them. Run it before pushing. Where the engine-free tests are, and what each protects, is in [The CLI](../architecture/cli.md#tests), [Code generation](../architecture/codegen.md#tests) and [The runtime](../architecture/runtime.md#testing-the-runtime).
+That is what CI runs on every pull request, on Linux and on macOS (Apple silicon): the Windows code paths (`#[cfg(target_os)]`) are only built on Windows, so run it there too when you change them. Run it before pushing. Where the engine-free tests are, and what each protects, is in [The CLI](../architecture/cli.md#tests), [Code generation](../architecture/codegen.md#tests) and [The runtime](../architecture/runtime.md#testing-the-runtime).
 
 Anything that touches the engine is tested in a UE project of your choice,
 driven by this checkout's CLI (`cargo run -p rusteal --`, from the repository
@@ -78,6 +78,18 @@ What happens in the editor is tested with editor Python, in an editor with no wi
 - writes `PASS`/`FAIL` lines to a results file, ends Play, and quits with `unreal.SystemLibrary.quit_editor()`.
 
 A C++ helper library in the test project's own module, never in Rusteal, reaches what Python cannot: the Message Log's entries and tokens, Blueprint graph nodes, function calls on a token's link. The ports in [Porting an engine template](../templates/porting.md#validating) are validated this way.
+
+## Memory errors on macOS
+
+A crash in `malloc` or a jump to a nonsense address is often memory corruption from earlier. On macOS, Guard Malloc puts every allocation of the system allocator (the one Rust uses) against a protected page, so the overrun faults at the instruction that does it; the engine's own allocations are not affected, so the editor stays usable:
+
+```bash
+DYLD_INSERT_LIBRARIES=/usr/lib/libgmalloc.dylib \
+  "<engine>/Engine/Binaries/Mac/UnrealEditor.app/Contents/MacOS/UnrealEditor" "<dir>/Probe/Probe.uproject" \
+  -game -nullrhi -unattended -nosplash -nosound -stdout
+```
+
+The engine's crash handler prints only the top of the stack; while it hangs on the crash, `lldb --batch -p <pid> -o "thread backtrace all"` shows the whole stack of the faulting thread, through the signal frame. Stop a headless editor with `-ExecCmds=quit` or `kill -9`, not `SIGTERM`: on macOS a `SIGTERM` that arrives while the engine is still building distance fields (a first run, or `-ddc=Cold`) crashes the engine, with or without Rusteal.
 
 ## Before a pull request
 

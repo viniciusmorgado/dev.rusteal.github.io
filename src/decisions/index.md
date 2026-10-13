@@ -133,6 +133,11 @@ Why Rusteal is the way it is. Each record gives the decision, the reasons, what 
 - **Why.** UBT records a UBT plugin's assembly relative to its `.csproj` and combines the two again on each build; when that relative path climbs to the root, the project on another volume than the engine (`/Volumes/...` and `/Users/...` on macOS) or under `/tmp` on Linux, the result loses its leading `/` and UBT stops at step 1 (`... RustealExporter.dll is not an absolute path`). In the engine, every project also shared one `RustealExporter.dll`, whatever its Rusteal version, and an engine install can be read-only.
 - **Implies.** Each project builds its own exporter (`Plugins/RustealGenerator/Binaries/`, ignored by the project's `.gitignore`); a `RustealExporter` directory left in an engine's `Binaries/DotNET/UnrealBuildTool/Plugins/` by older versions is unused and can be deleted.
 
+### D7. A buffer the engine writes a struct into has the struct's size
+- **Decision.** For an out parameter or a return value of struct type, the generated binding allocates `rusteal_core::struct_size_by_name("<Struct>")` bytes, the engine's `GetStructureSize()`, looked up once per call site (`param_helpers::struct_buffer_expr`); the C++ wrapper copies `sizeof(F<Struct>)` into it.
+- **Why.** The buffers were 256 bytes whatever the struct: `FHitResult` is larger, and every sweep (`K2_SetRelativeLocation`, `K2_SetActorLocation`, ...) wrote past the end of the buffer into the heap. macOS's allocator caught it, a crash in `malloc` or a bad pointer later; the other platforms corrupted memory silently. Found with Guard Malloc ([Testing a change](../contributing/testing.md#memory-errors-on-macos)).
+- **Implies.** Never size a buffer the engine writes into from a guess; the codegen test `struct_out_buffers_take_the_engine_size` checks the out parameters.
+
 ## CLI
 
 ### E1. The CLI is also a Cargo subcommand
