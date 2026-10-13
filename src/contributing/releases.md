@@ -51,7 +51,7 @@ Four workflows in `.github/workflows/` carry a change from a branch to crates.io
 
 | Workflow | Runs on | What it does |
 |---|---|---|
-| `ci.yml` | pushes to `develop`, pull requests to `develop` and `main` | on `ubuntu-latest`: build, tests and Clippy of the workspace, and `cargo audit`, which fails on any dependency with a RustSec vulnerability advisory |
+| `ci.yml` | pushes to `develop`, pull requests to `develop` and `main` | build, tests and Clippy of the workspace on `ubuntu-latest` and on `macos-latest` (job `build-macos`, Apple silicon); on Linux also `cargo audit`, which fails on any dependency with a RustSec vulnerability advisory |
 | `prepare-release.yml` | every pull request to `main` | what the release will do after the merge, before it: the version, the tests, Clippy, the plugin snapshot and the packaging of every crate as it will be published |
 | `release.yml` | a push to `main` | publishes the crates in dependency order and creates the tag |
 | `sync-develop.yml` | the end of a Release run | fast-forwards `develop` to `main`, so the version commit reaches it |

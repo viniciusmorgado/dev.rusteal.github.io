@@ -49,9 +49,11 @@ Each Rust library is a separate dynamic library today, and parts of the runtime 
 
 ## Tooling
 
+- **`SIGTERM` can crash the editor on macOS** while the engine builds distance fields (a first run, `-ddc=Cold`): an engine issue, with or without Rusteal. Closing the editor or the game normally does not send it; scripts should stop a headless editor with `-ExecCmds=quit` or `kill -9`.
+- **Strings the engine returns are cut at 512 bytes** in the generated bindings (`StringUtf8` buffers); the C++ wrapper respects the buffer's length, so a longer string is truncated, never overrun.
 - **A test project under `/tmp` fails at step 1 on Linux**: UBT builds the exporter's path without its leading `/`. Use a directory of your own.
 - **`rusteal-cli/ue_plugin_embed/`** is a local, possibly stale snapshot; builds in the workspace ignore it (they read `ue_plugin/`).
 - **`setup.rs`, `global_config.rs` and `sync_plugin.rs`** have no unit tests; they are covered by making a project.
 - **Packaging on macOS needs a workaround**: with Xcode 27, UE 5.8 starts the `xcodebuild` that finalizes the `.app` without a stdin and the build fails (`Failed to finalize the .app with Xcode`), for any C++ project. `rusteal package` works around it ([Platform optimizations](../internals/platform_optimizations.md#macos-xcodebuild-without-a-stdin)); running UAT by hand still fails. Reported to Epic: [the forum post](https://forums.unrealengine.com/t/5-8-mac-failed-to-finalize-the-app-with-xcode-on-xcode-27-xcodebuild-started-without-stdin-bad-file-descriptor-in-touch-ubt-generated-tiles/2839864).
-- **CI runs on Linux only**: the Windows and macOS code paths are built and tested on those machines by hand.
+- **CI does not run on Windows**: the Windows code paths are built and tested on a Windows machine by hand; Linux and macOS have CI jobs.
 - **macOS on Intel processors** has not been tested; macOS support is Apple silicon only.
