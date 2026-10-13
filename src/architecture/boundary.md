@@ -65,7 +65,7 @@ Two hand-written mirrors, field by field in the same order: `rusteal-ffi/src/api
 | `widget` | Creating widgets, root widget, widget tree |
 | `input` | Enhanced Input action binding, touch interface |
 | `console` | Commands and variables |
-| `platform` | The engine's services the runtime uses instead of the operating system's: `launch_task(run, data)` (a background task of the engine's task system), `seconds`, `sleep`, `is_game_thread` (`RustealPlatformApiImpl.cpp`) |
+| `platform` | The engine's services the runtime uses instead of the operating system's: `launch_task(run, data)` (a background task of the engine's task system), `seconds`, `sleep`, `is_game_thread`, `create_thread(run, data, name)` and `join_thread` (an `FRunnableThread`, created and freed by the plugin), `worker_count` (`FPlatformMisc::NumberOfWorkerThreadsToSpawn`) (`RustealPlatformApiImpl.cpp`) |
 
 Each C++ sub-table is a global filled by **positional** aggregate initialization (`FRustealCoreApi GCoreApi = {&IsValidImpl, ...}` in `RustealCoreApiImpl.cpp`, and likewise in each `Rusteal*ApiImpl.cpp`).
 
@@ -123,7 +123,7 @@ Ids are positions: they change whenever a bound function is added or removed any
 
 ## Panics (`rusteal-core/src/ffi_guard.rs`)
 
-`ffi_boundary(default, f)` runs `f` under `catch_unwind`: a panic is reported (error level, as a script error, "Rust panic: ..." with the file, line and column the panic hook recorded) and the call returns `default`. The hook is chained to the one installed before. All seven callbacks use it; `init` and `shutdown` use `catch_unwind` directly (a panic in `init` returns null and the library is refused). Background tasks, game-thread jobs and tick hooks catch their own panics (`task.rs`). The callbacks are `extern "C"`, not `"C-unwind"`: a panic must never reach C++, and these guards are what ensure it.
+`ffi_boundary(default, f)` runs `f` under `catch_unwind`: a panic is reported (error level, as a script error, "Rust panic: ..." with the file, line and column the panic hook recorded) and the call returns `default`. The hook is chained to the one installed before. All seven callbacks use it; `init` and `shutdown` use `catch_unwind` directly (a panic in `init` returns null and the library is refused). Background tasks, game-thread jobs and tick hooks catch their own panics (`task.rs`). The callbacks are `extern "C"`, not `"C-unwind"`: a panic must never reach C++, and these guards are what ensure it. Built with `panic = "abort"` (a platform that requires it), nothing is caught: the hook reports the panic, its message and location, to the engine before the process aborts.
 
 ## Threads
 

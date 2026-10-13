@@ -128,6 +128,19 @@ All four were done in October 2026 (Rusteal 0.9) and validated on Linux; Windows
 
 How they were validated: the fixture is a project with the game and two runtime plugins whose Rust code runs a scenario by itself and writes `PASS`/`FAIL` lines: two classes named `Item` in two libraries, a call from the game into a plugin's function and back, each library's tick hooks counted over thirty frames (once per frame each), a plugin's background task, a closure of the game on a plugin's actor's delegate and the other way round, a Blueprint child of a Rust class placed in the level, the game thread and the engine's clock. It passed in the editor's game mode (dynamic libraries), packaged with `--static` in Development and in Shipping (no Rust dynamic library in the package), and packaged from a definition file `rusteal platform show Linux` printed. The projects of the interface and error tests and every template were built and played again on top of it.
 
+### After the four: closing what needs no SDK
+
+Four more steps, done in October 2026 on Linux, take the desktop work as close to a console build as a machine without an SDK can:
+
+| Step | What it showed |
+|---|---|
+| Linux ARM64, cross-compiled | A static package for `LinuxArm64` from an x64 machine, with the engine's own ARM64 toolchain: the executable is `aarch64` with the Rust code in it. It also showed that a library crate with a `cdylib` crate type made Cargo link a dynamic library for the target as well, with the host's linker: library crates are now plain `rlib`s, and `rusteal build` makes the editor's dynamic library with `cargo rustc --crate-type cdylib` (decision E13). |
+| A simulated platform pack | A definition file outside the repository, as a console's will be: a target JSON (a copy of the Linux target with `panic-strategy: abort`), a dated nightly toolchain, `build_std = ["std", "panic_abort"]`, `-Zjson-target-spec` (which recent nightlies require for a JSON target) and `-Cpanic=abort`. The fixture packaged from it passes every check. |
+| Panics that abort | With `panic = "abort"` a panic ends the process; the hook reports it, with its location, to the log first (decision B10). |
+| Locks, thread-locals and `rayon` | The runtime's `std` locks and thread-locals are in one module (B11); `rayon` runs on the engine's threads, one pool per library, safe across a hot reload (B12). |
+
+Windows remains to be validated (`rusteal package --static` on Win64, the closest desktop to the Xbox toolchain), on a Windows machine.
+
 ### After access: with the SDK and the devkits
 
 In the private platform pack, on top of the four milestones above:

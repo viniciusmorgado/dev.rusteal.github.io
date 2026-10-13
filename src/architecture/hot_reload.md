@@ -7,7 +7,7 @@ A Rust library is swapped while the editor runs: save a file, `rusteal watch` bu
 ```
 save a .rs file
   └─ rusteal watch (polls every 400 ms, settles 300 ms)
-       └─ rusteal build: cargo build, then deploy
+       └─ rusteal build: cargo rustc (cdylib), then deploy
             └─ copy to librusteal.so.partial, rename over librusteal.so
                  └─ RustealAutoReload (DirectoryWatcher, quiet for 0.5 s)
                       └─ RustealReloadLibrary(Name)

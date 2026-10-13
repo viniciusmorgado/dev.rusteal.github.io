@@ -22,9 +22,10 @@
 | `ue_math.rs` | `Rotator`, `Transform`, `LinearColor`, `Color`, `Plane`, `Ray`, `Sphere`, boxes and bounds, on `glam`. |
 | `world.rs` | Spawning, finding, loading and creating objects, actors of a class, data table rows. |
 | `console.rs`, `input.rs`, `widget.rs`, `logging.rs` | Console commands and variables, Enhanced Input binding, widgets, `ulog!`. |
-| `task.rs` | Background work on the engine's tasks, the game-thread queue, tick hooks, `is_game_thread` (the engine's `IsInGameThread`). |
+| `task.rs` | Background work on the engine's tasks, dedicated engine threads (`spawn_thread`, `EngineThread`), the game-thread queue, tick hooks, `is_game_thread` (the engine's `IsInGameThread`), `worker_count`. |
+| `sync.rs` | The only source of `Mutex`, `RwLock`, `Once`, `OnceLock` and `thread_local!` in `rusteal-core`, with `lock_or_recover` and friends: what a platform whose `std` lacks them would replace. |
 | `time.rs` | The engine's clock (`FPlatformTime::Seconds`): `now_seconds`, `sleep`, and `Instant`, shaped like `std::time::Instant`. |
-| `std_fallback.rs` | The `std` threads and clock, used only when no engine is there (the unit tests). |
+| `std_fallback.rs` | The `std` threads, clock and core count, used only when no engine is there (the unit tests). |
 | `error.rs`, `ffi_guard.rs` | `RustealError` and panics (see [Errors](errors.md)). |
 
 ## Threads and ticks (`task.rs`)
@@ -33,9 +34,10 @@ The thread that runs `rusteal_init` is recorded as the game thread. Every queue 
 
 - **`run_on_game_thread(f)`** pushes `f` onto a queue; it runs on the next tick.
 - **`spawn(work, done)`** runs `work` as a task of the engine's task system (`platform.launch_task`, `UE::Tasks::Launch` at background priority), with the spawning module current there, and queues `done(value)` for that module's game-thread queue. A panicking `work` is logged on the game thread; a thread that cannot start is logged too. Running tasks are counted.
+- **`spawn_thread(name, f)`** starts a dedicated engine thread (`platform.create_thread`, an `FRunnableThread`), with the module current there, for work that lasts; `join()` waits for it (`platform.join_thread`), and a dropped `EngineThread` is kept by its module and joined when the module shuts down.
 - **`on_tick(f)`** registers a hook called every tick with the delta time, until its `TickHandle` (which names its module) is removed (the handle is `#[must_use]`: dropping it keeps the hook forever).
 - **`tick(delta)`**, the `on_tick` callback: drains the queue, then calls the hooks, each under `catch_unwind`, without holding the lock while user code runs, so a hook may add or remove hooks.
-- **`shutdown()`**, from the module's shutdown: waits for its running tasks (warning after a second), then clears its queue and hooks, so no thread runs code that is unloaded.
+- **`shutdown()`**, from the module's shutdown: waits for its running tasks (warning after a second), joins its dropped threads, then clears its queue and hooks, so no thread runs code that is unloaded.
 
 On the C++ side, `StartupModule` adds `TickLibraries` to the core ticker (`FTSTicker::GetCoreTicker()`), which calls every library's `on_tick` each frame.
 
@@ -73,6 +75,7 @@ What a game crate depends on, and nothing else:
 - `entry!()` / `entry!(bindings_crate)`: the library's `__RUSTEAL_MODULE`, its `__RUSTEAL_EXPORTS` (with the callbacks), and in a dynamic library the four exports;
 - `on_load!(function)`: a hook run at the end of every `init` of the library that owns the crate, hot reloads included;
 - `static_modules!` and `manifest()`: what a static build is made of (see [Static linking](boundary.md#static-linking));
+- `rayon` (feature `rayon`): `ThreadPool`, a `rayon` pool whose spawn handler starts each worker with `task::spawn_thread`, so they are engine threads; `pool()` and `install(op)`, one pool per module, created on first use with `task::worker_count()` threads, and dropped (its workers joined) by the module's shutdown, after its tasks, which a hot reload needs; `prelude`, `rayon`'s;
 - the `static-link` feature, which only the static build enables, and `engine-allocator`, which adds `EngineAllocator` (a `GlobalAlloc` over the engine's `FMemory`, through `rusteal_engine_malloc`, `_malloc_zeroed`, `_realloc` and `_free`, which the plugin defines in static builds);
 - `prelude`: the references, containers, structs, errors, math types, handles, `uclass`/`uclass_impl`/`ustruct` and the `glam` types a game uses most. `uenum`, `ulog!`, `bail!`, `ensure!` and `task` are reached through the crate (`rusteal_runtime::runtime::ulog`).
 
@@ -97,9 +100,10 @@ There is no test double of the API table: a test that reaches `ffi_dispatch` pan
 |---|---|
 | `error.rs` | Codes, formatting, contexts, locations, std conversions, `bail!`/`ensure!`, source paths, size and `Send`/`Sync`. |
 | `ffi_guard.rs` | A panic returns the default. |
-| `task.rs` | `spawn`, `on_tick`, removal, `shutdown`, driven by calling `tick()` by hand; two modules ticking and shutting down apart. |
+| `task.rs` | `spawn`, `on_tick`, removal, `shutdown`, driven by calling `tick()` by hand; two modules ticking and shutting down apart; threads joined, or joined by the shutdown. |
+| `rusteal-runtime/src/rayon.rs` | Work on a module's pool, its workers in the module, the pool dropped at shutdown. |
 | `time.rs` | `Instant` arithmetic. |
-| `tests/engine_services.rs` | No source file but `std_fallback.rs` uses `std::thread` or the `std` clock. |
+| `tests/engine_services.rs` | No source file but `std_fallback.rs` uses `std::thread` or the `std` clock, and none but `sync.rs` takes locks or thread-locals from `std`. |
 | `module.rs` | Scopes, ownership, the start and stop states, qualified type ids, a function table refusing other wrappers. |
 | `delegate_registry.rs` | A module's shutdown clears only its closures. |
 | `console.rs` | Value parsing. |

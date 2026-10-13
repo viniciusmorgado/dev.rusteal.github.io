@@ -30,10 +30,11 @@ No game code needs `unsafe`. What is still less idiomatic than it could be:
 
 `rusteal package --static` links every library into the game (see [Static linking](../architecture/boundary.md#static-linking)):
 
-- **Validated on Linux only.** The Windows (`.lib`, MSVC's runtime) and macOS paths are written but have not been packaged.
+- **Validated on Linux x64**, and cross-compiled for Linux ARM64 (built and linked, not run on an ARM machine). The Windows (`.lib`, MSVC's runtime) and macOS paths are written but have not been packaged.
 - **No hot reload** of a static library, by design; `Rusteal.Reload` says so.
 - **One `log` logger and one panic hook** for every library: the maximum log level is shared.
-- **Threads Rusteal did not start** run with no module current, and are attributed to the game's library: a closure a `rayon` worker registers belongs to the game.
+- **Threads Rusteal did not start** run with no module current, and are attributed to the game's library: a closure a worker of `rayon`'s global pool registers belongs to the game (the workers of `rusteal_runtime::rayon`'s pools run in their library).
+- **`rayon`'s global pool** never stops its threads: a hot reload unloads the code they run. `rusteal_runtime::rayon`'s pools are joined when their library unloads.
 - **A crate used by two libraries is refused**, since its types would be registered by both; move shared code without Rust types into its own crate, used by both, or the types into one library.
 - **Editor plugins are left out** of the archive (they are not part of a packaged game).
 - **Plugins made before 0.9** stage their dynamic library anyway: their `Build.cs` adds it directly instead of through `Rusteal.AddRustLibrary`.

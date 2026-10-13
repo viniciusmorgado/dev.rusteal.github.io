@@ -118,6 +118,20 @@ Why Rusteal is the way it is. Each record gives the decision, the reasons, what 
 - **Rejected.** Forbidding `std` threads and crates such as `rayon` in game code (most games never ship on consoles, and a platform's `std` port may support them); a Cargo feature to block them (features add, they cannot forbid a dependency).
 - **Implies.** A task that never ends holds one of the engine's workers. Locks and thread-locals are still `std`'s (`849381b`, `66d20a2`, `bdcec59`, `8ec7933`, `1ac7df7`).
 
+
+### B10. A panic is reported before it aborts
+- **Decision.** Where Rust is built with `panic = "abort"` (`cfg(panic = "abort")`), the panic hook reports the panic, its message and location, to the engine's log before the process ends; with unwinding, `ffi_boundary` still catches it and the game goes on.
+- **Why.** Consoles may require aborting on a panic, and an abort with no message leaves a crash report that says nothing about Rust (`9e72b64`).
+
+### B11. Locks and thread-locals come from one module
+- **Decision.** `rusteal-core` takes `Mutex`, `RwLock`, `Once`, `OnceLock` and `thread_local!` from `sync.rs` only, and a test keeps it so; they are still `std`'s.
+- **Why.** They are the `std` services a console's port of `std` is most likely to have, so replacing them now would be work for nothing; keeping them in one place makes the replacement one file if a platform lacks them (`e7d9d69`).
+
+### B12. `rayon` runs on the engine's threads, one pool per library
+- **Decision.** `task::spawn_thread` starts dedicated engine threads (`FRunnableThread`); the runtime's `rayon` feature builds `rayon` pools whose spawn handler uses it, one per library, created on first use with the engine's worker count and joined when the library shuts down.
+- **Why.** Games use `rayon`; its global pool starts the operating system's threads and never stops them, so a hot reload unloads the code they run. Engine threads are what a console provides and the engine profiles; a pool that belongs to its library ends with it.
+- **Rejected.** Running `rayon` workers as tasks of the engine's task system (they are loops that last as long as the pool, which would hold the task workers); one pool for every library in a static build (each library's shutdown has to wait for its own work only).
+- **Implies.** The global pool stays usable and stays unsafe across a hot reload; the books steer away from it (`14e91ea`, `6de3453`, `6f2585f`, `b936a28`, `be61ffe`).
 ## Versions
 
 ### C1. One version for everything
@@ -214,6 +228,10 @@ Why Rusteal is the way it is. Each record gives the decision, the reasons, what 
 - **Why.** Console specifics cannot be in a public repository, but the code that uses them can: a private platform pack is a definition file and its toolchain, with nothing to patch in Rusteal. Host and target are separate questions: the host runs UBT and the editor; the target is what the game is built for.
 - **Implies.** `rusteal platform show` prints a definition, which is how a pack starts (`5507bed`).
 
+
+### E13. Library crates are plain Rust libraries; `rusteal build` makes the dynamic library
+- **Decision.** A game's or plugin's crate declares no `crate-type`; step 4 runs `cargo rustc --lib --crate-type cdylib`, and `rusteal package --static` rewrites an older `crate-type` with `cdylib` to `["rlib"]`.
+- **Why.** A dependency's `cdylib` is linked as a dynamic library for whatever target the static build compiles for: for Linux ARM64 or a console, with a linker the host does not have, and the build failed. `--crate-type` builds the editor's library from the same crate, including in projects that still declare one (`a604d23`).
 ## Hot reload
 
 ### F1. A reload loads a numbered link or copy of the deployed library
