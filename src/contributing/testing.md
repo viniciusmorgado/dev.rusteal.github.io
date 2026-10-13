@@ -20,7 +20,7 @@ root). A new project that depends on this checkout:
 cargo run -p rusteal -- new Probe --dir <dir> --runtime-path .
 ```
 
-Put it in a directory of your own, such as the one that holds your Unreal projects, not in `/tmp`: on Linux, UBT fails at step 1 for a project under `/tmp`, building the exporter's path without its leading `/` ("is not an absolute path").
+Any directory works, on the engine's volume or another one: the exporter builds into the project (decision D6).
 
 After changing the runtime, the macros or a game crate:
 
