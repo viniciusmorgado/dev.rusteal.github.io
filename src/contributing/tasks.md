@@ -64,7 +64,7 @@ See [Features](../templates/features.md): a plugin template with a `[feature]` t
 1. Build a test project with the new engine; regenerate (`build --all`).
 2. Check the engine's deprecation warnings against `docs/ue-deprecations.md`; record new entries with their ids.
 3. Blocklist what no longer links; fix what the exporter no longer reads.
-4. Run every template; update the prerequisites in the game developer's handbook from the engine's `Windows_SDK.json`, `Linux_SDK.json`, `Mac_SDK.json` and `Apple_SDK.json` (the macOS and Xcode versions).
+4. Run every template; update the prerequisites in the game developer's handbook from the engine's `Windows_SDK.json`, `Linux_SDK.json`, `Mac_SDK.json` and `Apple_SDK.json` (the macOS and Xcode versions); with a new Xcode, download its Metal Toolchain before building.
 
 ## Release
 

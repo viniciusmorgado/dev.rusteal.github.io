@@ -10,6 +10,7 @@ Everything in the game developer's [Prerequisites](https://viniciusmorgado.githu
 |---|---|---|
 | Git | the distribution's package (`git`); on Windows, [Git for Windows](https://git-scm.com/download/win); on macOS, Xcode's | cloning the repository |
 | [clangd](https://clangd.llvm.org) (optional) | the distribution's package or LLVM (on macOS, Homebrew's `llvm`); Zed downloads it on its own | C++ support in the editor, for `ue_plugin/` |
+| Metal Toolchain (macOS) | `xcodebuild -downloadComponent MetalToolchain`, again after each Xcode update; check with `xcodebuild -showComponent MetalToolchain` | the Metal shader compiler (`metal`, `metallib`) the engine runs through `xcrun` when a test project builds, cooks or packages; Xcode 26 and newer no longer include it (see the game developer's [Prerequisites](https://viniciusmorgado.github.io/game.rusteal.github.io/getting_started/prerequisites.html#macos-apple-silicon)) |
 | clang-format | the distribution's package or LLVM (on macOS, Homebrew's `llvm` or `clang-format`: Xcode has none) | formatting `ue_plugin/` with `.clang-format` |
 | [.NET 10 SDK](https://dotnet.microsoft.com/download) (optional), on the `PATH` | Microsoft (the macOS Arm64 installer on a Mac), or the distribution's package (`dotnet-sdk-10.0`) | C# support in the editor, for the exporter in `ue_plugin/RustealGenerator/`; `dev-setup` restores the solution with it |
 
