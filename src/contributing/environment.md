@@ -8,15 +8,18 @@ Everything in the game developer's [Prerequisites](https://viniciusmorgado.githu
 
 | Dependency | Where from | What for |
 |---|---|---|
-| Git | the distribution's package (`git`); on Windows, [Git for Windows](https://git-scm.com/download/win) | cloning the repository |
-| [clangd](https://clangd.llvm.org) (optional) | the distribution's package or LLVM; Zed downloads it on its own | C++ support in the editor, for `ue_plugin/` |
-| [.NET 10 SDK](https://dotnet.microsoft.com/download) (optional) | Microsoft, or the distribution's package (`dotnet-sdk-10.0`) | C# support in the editor, for the exporter in `ue_plugin/RustealGenerator/` |
+| Git | the distribution's package (`git`); on Windows, [Git for Windows](https://git-scm.com/download/win); on macOS, Xcode's | cloning the repository |
+| [clangd](https://clangd.llvm.org) (optional) | the distribution's package or LLVM (on macOS, Homebrew's `llvm`); Zed downloads it on its own | C++ support in the editor, for `ue_plugin/` |
+| Metal Toolchain (macOS) | `xcodebuild -downloadComponent MetalToolchain`, again after each Xcode update; check with `xcodebuild -showComponent MetalToolchain` | the Metal shader compiler (`metal`, `metallib`) the engine runs through `xcrun` when a test project builds, cooks or packages; Xcode 26 and newer no longer include it (see the game developer's [Prerequisites](https://viniciusmorgado.github.io/game.rusteal.github.io/getting_started/prerequisites.html#macos-apple-silicon)) |
+| clang-format | the distribution's package or LLVM (on macOS, Homebrew's `llvm` or `clang-format`: Xcode has none) | formatting `ue_plugin/` with `.clang-format` |
+| [.NET 10 SDK](https://dotnet.microsoft.com/download) (optional), on the `PATH` | Microsoft (the macOS Arm64 installer on a Mac), or the distribution's package (`dotnet-sdk-10.0`) | C# support in the editor, for the exporter in `ue_plugin/RustealGenerator/`; `dev-setup` restores the solution with it |
 
 The checkout builds with the MSRV, Rust 1.88.0, whatever your default
 toolchain is: `rust-toolchain.toml` pins it, and rustup installs it on the
 first `cargo` command. The file names no host, so rustup completes it with its
 default host; on Windows that must be `x86_64-pc-windows-msvc` (see the
-Windows prerequisites above).
+Windows prerequisites above), on macOS `aarch64-apple-darwin`: an x86_64
+rustup under Rosetta builds libraries the Apple silicon editor cannot load.
 
 ## The development environment
 
@@ -27,7 +30,7 @@ which is not versioned; `.env.example` lists them:
 |---|---|
 | `RUSTEAL_DEV_ENGINE_ROOT` | The Unreal Engine root, the directory holding `Engine/` |
 
-Linux:
+Linux and macOS:
 
 ```bash
 git clone https://github.com/viniciusmorgado/rusteal.git
@@ -66,7 +69,8 @@ Then it writes:
   commands UBT gives for that project, pointed at `ue_plugin/`;
 - **the exporter's `.csproj.props`**, so C# language servers resolve the
   engine's `EpicGames.*` assemblies, and a `dotnet restore` of `rusteal.sln`
-  with the .NET SDK bundled with the engine. The solution has two projects, both
+  with the `dotnet` on the `PATH` (a .NET SDK 10 or newer; without one,
+  `dev-setup` warns and goes on). The solution has two projects, both
   for IDEs only: the exporter (`ue_plugin/RustealGenerator/Source/RustealExporter/`),
   and `ide/RustealRules/`, which gives the plugins' `*.Build.cs` files the context
   UBT compiles them with. Without that project a language server analyzes those
@@ -83,7 +87,7 @@ a generated header only matches the header it was made from.
 
 | | Working on Rusteal | Making a game |
 |---|---|---|
-| Engine path from | `.env` | the `rusteal` CLI, which asks once and keeps it in `~/.config/rusteal/config.toml` (the platform's config directory elsewhere) |
+| Engine path from | `.env` | the `rusteal` CLI, which asks once and keeps it in `~/.config/rusteal/config.toml` (`~/Library/Application Support/rusteal/config.toml` on macOS, `%APPDATA%\rusteal\config.toml` on Windows) |
 | Read by | `cargo xtask` only | the `rusteal` CLI |
 | Writes the exporter's `.csproj.props` | `cargo xtask dev-setup`, in this checkout | `rusteal setup`, in the game project |
 

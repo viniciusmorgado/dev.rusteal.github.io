@@ -44,10 +44,14 @@ Each Rust library is a separate dynamic library today, and parts of the runtime 
 
 - **Structs and enums** keep their old layout until an editor restart.
 - **Rust-private fields** start over from `Default` on every reload.
-- **Not tested**: hot reload on Windows and macOS, a changed parent class, components added or removed (see `docs/hot-reload.md`).
+- **macOS keeps every reloaded library**: `dlclose` never unloads a Rust library there, so each reload leaves the previous one mapped until the editor exits; the load copy is a full copy, not a link (see [Hot reload](../architecture/hot_reload.md)).
+- **Not tested**: hot reload on Windows, a changed parent class, components added or removed (see `docs/hot-reload.md`).
 
 ## Tooling
 
 - **A test project under `/tmp` fails at step 1 on Linux**: UBT builds the exporter's path without its leading `/`. Use a directory of your own.
 - **`rusteal-cli/ue_plugin_embed/`** is a local, possibly stale snapshot; builds in the workspace ignore it (they read `ue_plugin/`).
 - **`setup.rs`, `global_config.rs` and `sync_plugin.rs`** have no unit tests; they are covered by making a project.
+- **Packaging on macOS needs a workaround**: with Xcode 27, UE 5.8 starts the `xcodebuild` that finalizes the `.app` without a stdin and the build fails (`Failed to finalize the .app with Xcode`), for any C++ project. `rusteal package` works around it ([Platform optimizations](../internals/platform_optimizations.md#macos-xcodebuild-without-a-stdin)); running UAT by hand still fails. Reported to Epic: [the forum post](https://forums.unrealengine.com/t/5-8-mac-failed-to-finalize-the-app-with-xcode-on-xcode-27-xcodebuild-started-without-stdin-bad-file-descriptor-in-touch-ubt-generated-tiles/2839864).
+- **CI runs on Linux only**: the Windows and macOS code paths are built and tested on those machines by hand.
+- **macOS on Intel processors** has not been tested; macOS support is Apple silicon only.

@@ -260,7 +260,7 @@ Contributor tooling, never published and never used by games. `cargo xtask dev-s
 2. asks for the UE project Rusteal is developed against;
 3. writes `compile_commands.json` for clangd, re-targeted at `ue_plugin/`;
 4. writes the exporter's `.csproj.props`;
-5. restores `rusteal.sln`.
+5. restores `rusteal.sln` with the `dotnet` on the `PATH` (a .NET SDK 10 or newer).
 
 ## What a game project contains
 

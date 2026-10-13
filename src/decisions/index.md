@@ -48,6 +48,14 @@ Why Rusteal is the way it is. Each record gives the decision, the reasons, what 
 - **Rejected.** Patching UBT to compile Rust (kept for a limitation measured with the SDK); loose objects or LLVM bitcode as the artifact (dependencies missing, LLVM versions tied); one self-contained static library per Rusteal library (duplicate runtimes and symbols).
 - **Implies.** The module contract and the static backend are built and tested on desktop first. See [Consoles](../platforms/consoles.md).
 
+### A11. The plugin names the Rust libraries itself
+- **Decision.** `RustealLibraryFileName` builds `lib<stem>.<ext>` on every platform but Windows, `<stem>.dll` there: the names `rusteal build` deploys and `Rusteal.Build.cs` stages (`38541c4`).
+- **Why.** `FPlatformProcess::GetModulePrefix()`, which it used before, is empty on Mac (only the Unix platform returns `lib`): the plugin looked for `rusteal.dylib`, the Rust side never loaded, and every Blueprint derived from a Rust class failed to load.
+
+### A12. macOS is supported on Apple silicon only
+- **Decision.** The supported platforms are Linux x64, Windows x64 and macOS on Apple silicon.
+- **Why.** Apple silicon is what Rusteal was tested on; macOS on Intel processors has not been, and is not claimed.
+
 ## Runtime
 
 ### B1. Panics are caught at the boundary
@@ -123,12 +131,12 @@ Why Rusteal is the way it is. Each record gives the decision, the reasons, what 
 ## CLI
 
 ### E1. The CLI is also a Cargo subcommand
-- **Why.** An IDE's Cargo run configuration starts `cargo rusteal watch` the same way on Linux and Windows (`a3ce116`).
+- **Why.** An IDE's Cargo run configuration starts `cargo rusteal watch` the same way on Linux, macOS and Windows (`a3ce116`).
 - **Implies.** `default-run = "rusteal"`: without it `cargo run -p rusteal` was ambiguous and broke the release (`1e1c540`).
 
 ### E2. Platform behaviour is chosen at compile time
 - **Decision.** The UBT and UAT scripts, the platform name, the library naming and the platform optimizations written all come from `#[cfg(target_os)]`.
-- **Why.** A CLI only builds for its own platform; a Windows CLI never writes Linux settings.
+- **Why.** A CLI only builds for its own platform; a Windows or macOS CLI never writes Linux settings.
 
 ### E3. Per-platform engine settings are written by the CLI, between markers
 - **Decision.** `[optimizations.<platform>.<File>.<Section>]` in `rusteal.toml`, written into `Config/<Platform>/<Platform><File>.ini` by `new`, `watch` and `package`; the user's keys win; `--optimizations off` leaves them out (`916d531`).
@@ -157,10 +165,17 @@ Why Rusteal is the way it is. Each record gives the decision, the reasons, what 
 ### E10. UBT runs with `-NoHotReload`
 - **Why.** With the editor open, UBT named the binaries for a C++ hot reload and the link failed; Rusteal never hot reloads C++ (`7704dc2`).
 
+### E11. On Mac with Xcode 27, `rusteal package` gives `xcodebuild` a stdin
+- **Decision.** UAT runs with `DEVELOPER_DIR` pointing at a mirror of Xcode's `Developer` directory whose `xcodebuild` runs the real one with `/dev/null` as its stdin (`rusteal-cli/src/xcode_shim.rs`).
+- **Why.** UE 5.8 starts the `xcodebuild` that finalizes the `.app` without a stdin, and Xcode 27 then fails the scheme's pre-action: no Mac game could be packaged, Rusteal or not.
+- **Rejected.** Running the finalize step by hand and continuing with `-skipbuild` (the receipt is never written); disabling UBA (5.8 always uses its executor); patching the engine install.
+- **Implies.** Remove it once the engine gives `xcodebuild` a stdin ([reported to Epic](https://forums.unrealengine.com/t/5-8-mac-failed-to-finalize-the-app-with-xcode-on-xcode-27-xcodebuild-started-without-stdin-bad-file-descriptor-in-touch-ubt-generated-tiles/2839864)). See [Platform optimizations](../internals/platform_optimizations.md#macos-xcodebuild-without-a-stdin).
+
 ## Hot reload
 
 ### F1. A reload loads a numbered link or copy of the deployed library
-- **Why.** A build can always replace the deployed file; a hard link costs nothing whatever the size; Windows locks a loaded DLL, so it copies.
+- **Why.** A build can always replace the deployed file; a hard link costs nothing whatever the size; Windows locks a loaded DLL, so it copies. macOS copies too (`e038281`): `dlclose` never unloads a Rust library there, and `dlopen` returns the image already loaded from the same inode, so a link to an unchanged file reloaded the old, initialized library and `rusteal_init` failed.
+- **Implies.** On macOS each reload keeps the previous library mapped until the editor exits.
 - **Implies.** The deploy step replaces the file (`.partial` then rename), never writes into it (`e8548e0`).
 
 ### F2. Classes are reinstanced with `FReload`, not Live Coding
@@ -214,7 +229,7 @@ Why Rusteal is the way it is. Each record gives the decision, the reasons, what 
 ## Build and release
 
 ### H1. Rust 1.88 is pinned, with no host triple
-- **Why.** The checkout cannot use newer Rust by accident; 1.88 is the version where edition 2024's `let` chains, which the code uses, are stable. Without a triple the file works everywhere; on Windows the host must be MSVC, which the engine links with.
+- **Why.** The checkout cannot use newer Rust by accident; 1.88 is the version where edition 2024's `let` chains, which the code uses, are stable. Without a triple the file works everywhere; on Windows the host must be MSVC, which the engine links with, and on macOS `aarch64-apple-darwin`.
 - **Implies.** Packaging in the release pipeline uses `cargo +stable`, because the pinned Cargo cannot package crates whose internal dependencies are not published yet.
 
 ### H2. `Cargo.lock` is not versioned
@@ -262,7 +277,7 @@ Why Rusteal is the way it is. Each record gives the decision, the reasons, what 
 - **Decision.** `rusteal.sln` and `ide/RustealRules` give the `*.Build.cs` files the context UBT gives them; without them a language server flags required `using` lines as unnecessary, and removing them breaks UBT (`f0e9d1d`).
 
 ### I5. Verified headless, then by hand
-- **Decision.** Ports and hot reload are validated in a headless editor driven by Python, then by hand; the docs record what was tested and what was not (Windows and macOS hot reload, changed parent classes).
+- **Decision.** Ports and hot reload are validated in a headless editor driven by Python, then by hand; the docs record what was tested and what was not (Windows hot reload, changed parent classes).
 
 ### I7. A game never needs `unsafe`, and is written in idiomatic Rust
 - **Decision.** Two rules for every feature Rusteal adds: a game developer using it never has to write `unsafe` code, and the whole game can always be written in idiomatic Rust. Every game and plugin crate the templates create starts with `#![deny(unsafe_code)]`.
