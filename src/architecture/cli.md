@@ -11,7 +11,8 @@ The command line is a clap `Parser`; `rusteal --version` is the crate's version.
 | `new <Name>` | `--dir` (`.`), `--template` (`blank`), `--variant`, `--runtime-path`, `--feature` (repeatable), `--no-build`, `--optimizations on\|off`, `--engine`, `--in-place` | `new_cmd::run_new` |
 | `plugin new <Name>` | `--template` (`blank`), `--project`, `--no-build`, `--editor` | `plugin_cmd::run_plugin_new` |
 | `plugin editor <Name>` | `--project`, `--no-build` | `plugin_cmd::run_plugin_editor` |
-| `plugin package <Name>` | `--project`, `--output` (`<root>/Packaged/Plugins`) | `package_cmd::run_plugin_package` |
+| `plugin package <Name>` | `--project`, `--output` (`<root>/Packaged/Plugins`), `--precompiled` | `package_cmd::run_plugin_package` |
+| `plugin merge <into> <package>...` | | `package_cmd::run_plugin_merge` |
 | `setup <project>` | | `setup::run_setup` |
 | `build [project]` | `--all`, `--step N`, `--from N`, `--release`, `--plugin` | `build_cmd::run_build` |
 | `watch [project]` | `--plugin`, `--optimizations` | `watch_cmd::run_watch` |

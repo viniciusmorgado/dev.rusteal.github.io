@@ -256,6 +256,11 @@ Why Rusteal is the way it is. Each record gives the decision, the reasons, what 
 - **Decision.** The CLI embeds the launcher's sources (`LAUNCHER_FILES`), builds them with the engine's `BuildPlugin` and installs the result in `Engine/Plugins/Marketplace/RustealLauncher`.
 - **Why.** Linux has no Epic Games Launcher and its editor cannot install Fab plugins; building with the user's own engine needs no binaries in the repository and no change to the release workflows (`2e22292`).
 
+### E16. A precompiled plugin is built by the engine's `BuildPlugin`, with the project's Rusteal plugin as its dependency
+- **Decision.** `rusteal plugin package --precompiled` builds the plugin's Rust libraries with the release profile, then runs `BuildPlugin` with `-Dependencies=<project>/Plugins/Rusteal/Rusteal.uplugin`, which copies the Rusteal plugin into the host project `BuildPlugin` makes. The plugin's `Config/FilterPlugin.ini` adds the Rust libraries, the Rust workspace without `target/` and `rusteal.toml` to the package. A plugin whose `.uplugin` says `"Installed": true` is left alone by `rusteal build` and `rusteal generate`; `rusteal plugin merge` joins the per-platform files of packages made on several platforms.
+- **Why.** `BuildPlugin` builds a plugin in a project of its own, where the Rusteal plugin it depends on was missing; passing it as a dependency needs no Rusteal installed in the engine. The sources still travel, since a static build compiles the plugin's crates into the game's archive.
+- **Implies.** A precompiled plugin works only in projects at the same Rusteal and engine version, as any plugin does. Each platform's binaries are built on that platform (`f559969`, `ef88af5`).
+
 ## Hot reload
 
 ### F1. A reload loads a numbered link or copy of the deployed library
