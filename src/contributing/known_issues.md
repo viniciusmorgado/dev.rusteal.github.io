@@ -57,3 +57,9 @@ No game code needs `unsafe`. What is still less idiomatic than it could be:
 - **Packaging on macOS needs a workaround**: with Xcode 27, UE 5.8 starts the `xcodebuild` that finalizes the `.app` without a stdin and the build fails (`Failed to finalize the .app with Xcode`), for any C++ project. `rusteal package` works around it ([Platform optimizations](../internals/platform_optimizations.md#macos-xcodebuild-without-a-stdin)); running UAT by hand still fails. Reported to Epic: [the forum post](https://forums.unrealengine.com/t/5-8-mac-failed-to-finalize-the-app-with-xcode-on-xcode-27-xcodebuild-started-without-stdin-bad-file-descriptor-in-touch-ubt-generated-tiles/2839864).
 - **CI does not run on Windows**: the Windows code paths are built and tested on a Windows machine by hand; Linux and macOS have CI jobs.
 - **macOS on Intel processors** has not been tested; macOS support is Apple silicon only.
+
+## The launcher
+
+- **A change to `ue_launcher/` alone does not start a release**: the release check looks at `rusteal-*`, `ue_plugin` and `Cargo.toml`, so the CLI's embedded copy of the launcher is updated with the next release that changes a crate.
+- **Tested on Linux only**: the launcher has not been built or run on Windows and macOS.
+- **Its buttons have not been clicked in every desktop**: on COSMIC (Wayland) the first version's window did not take a click, which is why the setup starts on its own; the state checks are verified from the editor's log.

@@ -78,6 +78,17 @@ Why Rusteal is the way it is. Each record gives the decision, the reasons, what 
 - **Rejected.** Explicit registration lists written by the game developer (one forgotten type is a missing class); linker flags such as `--whole-archive` (per platform, and not offered by UBT for every platform); patching UBT.
 - **Implies.** Library crates are built as `rlib`s too. A crate with Rust types belongs to one library: shared crates are refused (`246f5ff`, `d2ff6c9`, `2c598a7`).
 
+### A17. The New Project dialog is reached through a launcher plugin that ships no Rust
+- **Decision.** An editor-only engine plugin, `RustealLauncher` (`ue_launcher/`), adds a **Rust** category of templates to the New Project dialog; the Rusteal plugin stays in each project, installed by the CLI.
+- **Why.** The Rusteal plugin carries each project's generated wrappers, so it cannot be installed once in the engine. Fab builds a plugin from its sources with no `cargo` and accepts no executables, and a plugin on Fab cannot depend on another user-made plugin: a small C++ plugin that calls the CLI meets every rule.
+- **Rejected.** A third button next to BLUEPRINT and C++ (two fixed slots, no extension point); replacing the project browser (an override only a loaded module can register).
+- **Implies.** The launcher lives outside `ue_plugin/`, which is copied into every project; the CLI does the work (`a8c2b75`). See [The launcher](../architecture/launcher.md).
+
+### A18. A Rust template is a stub the launcher sets up the first time it opens
+- **Decision.** Each Rust template is a stub project that enables the launcher and names a Rusteal template and variant in `RustealLauncher.json`; when it opens, the launcher runs `rusteal new --in-place` and restarts the editor. Every variant is a template of its own.
+- **Why.** `BuildPlugin` removes `EnabledByDefault`, so a plugin from Fab is not loaded in the project browser and no hook of `TemplateDefs.ini` can run there; the first open is the first moment its code runs. The dialog does not record the variant it shows.
+- **Implies.** Requirements are checked in the launcher's window, not in the dialog; the setup starts on its own, since **Create** in the dialog already asked for it (`7f83c10`, `0803284`).
+
 ## Runtime
 
 ### B1. Panics are caught at the boundary
@@ -232,6 +243,14 @@ Why Rusteal is the way it is. Each record gives the decision, the reasons, what 
 ### E13. Library crates are plain Rust libraries; `rusteal build` makes the dynamic library
 - **Decision.** A game's or plugin's crate declares no `crate-type`; step 4 runs `cargo rustc --lib --crate-type cdylib`, and `rusteal package --static` rewrites an older `crate-type` with `cdylib` to `["rlib"]`.
 - **Why.** A dependency's `cdylib` is linked as a dynamic library for whatever target the static build compiles for: for Linux ARM64 or a console, with a linker the host does not have, and the build failed. `--crate-type` builds the editor's library from the same crate, including in projects that still declare one (`a604d23`).
+### E14. `rusteal new --in-place` fills a stub, and only success removes its marker
+- **Decision.** With `--in-place`, `rusteal new` sets up the project in the stub's own directory: it keeps what the open editor holds (`Saved/`, `Intermediate/`, `DerivedDataCache/`), clears the stub and anything a stopped conversion left, refuses anything else, and removes the marker after the build. `--engine` gives the engine without the configuration file, which a process without a terminal cannot be asked for.
+- **Why.** The editor that runs the CLI has the project open, and a setup can fail or be canceled; with the marker kept and the stub's `.uproject` restored by the launcher, opening the project again retries it (`fd4ed8f`, `94e74cd`).
+
+### E15. `rusteal launcher install` builds the launcher with the engine's `BuildPlugin`
+- **Decision.** The CLI embeds the launcher's sources (`LAUNCHER_FILES`), builds them with the engine's `BuildPlugin` and installs the result in `Engine/Plugins/Marketplace/RustealLauncher`.
+- **Why.** Linux has no Epic Games Launcher and its editor cannot install Fab plugins; building with the user's own engine needs no binaries in the repository and no change to the release workflows (`2e22292`).
+
 ## Hot reload
 
 ### F1. A reload loads a numbered link or copy of the deployed library
@@ -323,6 +342,10 @@ Why Rusteal is the way it is. Each record gives the decision, the reasons, what 
 - **Why.** A dependency with a RustSec vulnerability advisory must never reach a release; `Cargo.lock` is not versioned (H2), so the audit checks what a build resolves that day.
 - **Implies.** Only vulnerabilities fail; unmaintained and yanked crates warn. A new advisory can turn a pull request red with no change of its own: update or replace the dependency. `cargo-audit` comes prebuilt through `taiki-e/install-action`, pinned to a commit.
 
+### H11. The launcher has its own version
+- **Decision.** `RustealLauncher.uplugin` starts at `0.1.0` and is not bumped by the release workflows; the launcher accepts any CLI whose `rusteal new` has `--in-place` and `--engine`.
+- **Why.** Every Fab submission goes through review: a lockstep version would force one for each Rusteal release, while the launcher changes rarely.
+
 ## Process
 
 ### I1. The engine's templates set the priorities
@@ -352,6 +375,10 @@ Why Rusteal is the way it is. Each record gives the decision, the reasons, what 
 ### I6. The README presents, the handbooks document
 - **Decision.** The README keeps the presentation (what Rusteal is, why use it, UE6, acknowledgments, license) and points to the two handbooks; using Rusteal is documented in the game developer's handbook, working on it in this one.
 - **Why.** Nobody reads a 1600-line README; each handbook serves one reader.
+
+### I8. The launcher's sources carry a copyright header
+- **Decision.** Each `.cpp` and `.h` of `ue_launcher/` starts with `// Copyright <year> Vinicius Donatto Morgado.`
+- **Why.** Fab requires a copyright notice with the publisher's name in every source file; it is the one exception to the rule of no comments in the sources (I3).
 
 ## Recording a decision
 
