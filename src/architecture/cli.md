@@ -9,7 +9,8 @@ The command line is a clap `Parser`; `rusteal --version` is the crate's version.
 | Command | Flags | Code |
 |---|---|---|
 | `new <Name>` | `--dir` (`.`), `--template` (`blank`), `--variant`, `--runtime-path`, `--feature` (repeatable), `--no-build`, `--optimizations on\|off`, `--engine`, `--in-place` | `new_cmd::run_new` |
-| `plugin new <Name>` | `--template` (`blank`), `--project`, `--no-build` | `plugin_cmd::run_plugin_new` |
+| `plugin new <Name>` | `--template` (`blank`), `--project`, `--no-build`, `--editor` | `plugin_cmd::run_plugin_new` |
+| `plugin editor <Name>` | `--project`, `--no-build` | `plugin_cmd::run_plugin_editor` |
 | `plugin package <Name>` | `--project`, `--output` (`<root>/Packaged/Plugins`) | `package_cmd::run_plugin_package` |
 | `setup <project>` | | `setup::run_setup` |
 | `build [project]` | `--all`, `--step N`, `--from N`, `--release`, `--plugin` | `build_cmd::run_build` |
@@ -40,7 +41,7 @@ The command line is a clap `Parser`; `rusteal --version` is the crate's version.
 **The libraries** (`BuildContext::new`):
 
 - the game's, unless `--plugin` is given: the workspace `<root>/Rust`, the crate and features of `rusteal.toml`'s `[project]`, deployed to `<root>/Plugins/Rusteal/Binaries/<Platform>/` with the stem `rusteal`;
-- one per Rusteal plugin, every `<root>/Plugins/*` holding a `rusteal.toml` (`find_plugins`, sorted by name): the workspace `<plugin>/Rust`, the `[plugin]` crate and features, deployed to `<plugin>/Binaries/<Platform>/` with the stem `rusteal_<Plugin>`. `--plugin` matches a name case-insensitively.
+- one per Rusteal plugin, every `<root>/Plugins/*` holding a `rusteal.toml` (`find_plugins`, sorted by name): the workspace `<plugin>/Rust`, the `[plugin]` crate and features, deployed to `<plugin>/Binaries/<Platform>/` with the stem `rusteal_<Plugin>`, and a second library for its `[editor]` crate when it has one (stem `rusteal_<Plugin>Editor`; an editor crate that depends on the runtime crate is refused). `--plugin` matches a name case-insensitively and selects all of that plugin's libraries.
 
 **The five steps:**
 
@@ -92,6 +93,7 @@ The project's `.gitignore` comes from the templates (`.gitignore.tera`), not fro
 | `template_files.rs` | `TEMPLATE_FILES` | `templates/` |
 | `plugin_template_files.rs` | `PLUGIN_TEMPLATE_FILES` | `plugin_templates/` |
 | `project_feature_files.rs` | `PROJECT_FEATURE_FILES` | `project_features/` |
+| `plugin_editor_library_files.rs` | `PLUGIN_EDITOR_LIBRARY_FILES` | `plugin_editor_library/`: an editor library's files and its `rusteal.toml` section |
 
 It skips `Generated`, `Binaries`, `Intermediate`, `obj` and `*.csproj.props`. In the repository it reads `ue_plugin/` directly; the published crate has no `ue_plugin/` next to it, so it reads the snapshot `rusteal sync-plugin` writes into `rusteal-cli/ue_plugin_embed/` (gitignored, written by the release workflows); the launcher's goes into `rusteal-cli/ue_launcher_embed/` the same way. A local snapshot can be stale without harm, since the workspace build prefers `ue_plugin/`.
 
@@ -102,7 +104,7 @@ It skips `Generated`, `Binaries`, `Intermediate`, `obj` and `*.csproj.props`. In
 - **`plugin new`**: a name of 1 to 32 letters and digits, starting with a letter, not `Rusteal`, `RustealGenerator`, `RustealEditor` nor the project's; a feature carrying `Content/` keeps its fixed plugin name. It renders the template into `Plugins/<Name>/` (context `plugin`, `crate_name`, `version`, `glam_version`, and `runtime_path` when the project follows a checkout), writes the bindings placeholder and the prefixed C++ stubs, enables the plugin in the `.uproject`, copies its shared packs and builds.
 - **`package`**: the five steps in release (the editor libraries, which the cook loads), a `Snapshot` of the host's `Config/<Platform>/*.ini`, the platform optimizations, `RunUAT BuildCookRun -project= -platform= -clientconfig=<Development|Shipping> -build -cook -stage -pak -archive -archivedirectory=<out> -nop4 -unattended -utf8output`, then the target platform's `uat_args` (`-package` for the built-in Mac), the snapshot restored, then UAT's exit code. On Mac with Xcode 27 or newer, UAT runs with `DEVELOPER_DIR` pointing at the `xcodebuild` workaround (`src/xcode_shim.rs`, see [Platform optimizations](../internals/platform_optimizations.md#macos-xcodebuild-without-a-stdin)).
 - **`package --static`** (`src/static_link.rs`) builds the Rust code into the game instead (see [Static linking](boundary.md#static-linking)) before running UAT:
-  1. the libraries: the game's and every runtime plugin's (editor plugins are left out), a `crate-type` with `cdylib` rewritten to `["rlib"]` (`migrate::crate_types`): Cargo would otherwise link each library as a dynamic library for the target too, with a linker the host may not have for it;
+  1. the libraries: the game's and every runtime plugin's (editor plugins and editor libraries are left out), a `crate-type` with `cdylib` rewritten to `["rlib"]` (`migrate::crate_types`): Cargo would otherwise link each library as a dynamic library for the target too, with a linker the host may not have for it;
   2. the workspace in `Intermediate/Rusteal/Static/`: `Cargo.toml` (the Rusteal runtime as the project pins it, exact or from its checkout, with `static-link`; each library's crate by path, with its features; the release profile with fat LTO and one codegen unit; `debug = false` for the dev profile), the `archive` and `manifest` members, the game's `Cargo.lock` copied the first time;
   3. `cargo metadata`, for the crates each library owns (`static_link::ownership`);
   4. `cargo run -p rusteal-static-manifest` (dev profile, host), whose lines are every registration, grouped by library (`group_expected`);

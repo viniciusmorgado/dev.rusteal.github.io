@@ -23,7 +23,7 @@ Why Rusteal is the way it is. Each record gives the decision, the reasons, what 
 ### A4. One library for the game, one per Rusteal plugin
 - **Decision.** The game's code is a `cdylib` the Rusteal plugin loads. A Rusteal plugin has its own library, workspace, bindings and C++ module, which registers the library (`RustealRegisterPluginLibrary`, `RustealRegisterPluginLibraryChecked` since 0.9); its C++ symbols are prefixed `<Plugin>_` (`8e66cd7`, `5c1ac09`).
 - **Why.** Gameplay systems become reusable across projects. Classes, functions and pins remember the library that made them, and every call runs with that library current.
-- **Implies.** A plugin is runtime or editor, not both (two plugins otherwise); a Rust class cannot derive from another library's Rust class.
+- **Implies.** A Rust class cannot derive from another library's Rust class. A runtime plugin may add an editor library (A19).
 
 ### A5. A plugin's classes live in `/Script/<Plugin>`
 - **Why.** Plugins from different authors cannot clash on a class name, and the engine sees them by their module (`0a7bbae`).
@@ -88,6 +88,11 @@ Why Rusteal is the way it is. Each record gives the decision, the reasons, what 
 - **Decision.** Each Rust template is a stub project that enables the launcher and names a Rusteal template and variant in `RustealLauncher.json`; when it opens, the launcher runs `rusteal new --in-place` and restarts the editor. Every variant is a template of its own.
 - **Why.** `BuildPlugin` removes `EnabledByDefault`, so a plugin from Fab is not loaded in the project browser and no hook of `TemplateDefs.ini` can run there; the first open is the first moment its code runs. The dialog does not record the variant it shows.
 - **Implies.** Requirements are checked in the launcher's window, not in the dialog; the setup starts on its own, since **Create** in the dialog already asked for it (`7f83c10`, `0803284`).
+
+### A19. A plugin's editor library is a library of its own, named after its module
+- **Decision.** A runtime plugin's `rusteal.toml` may have an `[editor]` section: a second crate in the plugin's workspace, with its own bindings (`Rust/editor-bindings`), C++ module (`<Plugin>Editor`, type `Editor`), symbol prefix (`<Plugin>Editor_`), library file (`librusteal_<Plugin>Editor`) and package (`/Script/<Plugin>Editor`). Its module registers it with `RustealRegisterPluginModuleLibraryChecked(<Plugin>, <Plugin>Editor, ...)`, which finds the plugin by one name and names the library by the other.
+- **Why.** A gameplay system and its editor tools belong in one plugin, as C++ plugins put a runtime and an editor module side by side. Naming every part of a library after its C++ module keeps the two libraries apart everywhere the plugin's name was used, and leaves single-library plugins unchanged.
+- **Implies.** The editor library cannot depend on the runtime crate: in a dynamic build its library would register the runtime crate's types a second time, so `rusteal build` refuses it; it reaches the runtime library's classes through reflection until libraries see each other's types (M6). The static build leaves the editor library out (`d25f423`, `c0dd537`, `9c2906f`, `e93efbb`).
 
 ## Runtime
 
