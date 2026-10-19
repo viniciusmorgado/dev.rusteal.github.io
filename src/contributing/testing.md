@@ -72,6 +72,16 @@ It builds this checkout's CLI, creates `target/engine-test/RustealTests` with `-
 
 A check is a function from a `Context` (the game's world) to an `Outcome`, listed in `ALL`; one that waits for the engine returns `Outcome::Pending` and is polled every tick. Reproduce a boundary bug here first, and keep the check once it passes.
 
+## Checking the templates
+
+A change to the code generation or to the runtime's API can break the templates' code. One command compiles all of it:
+
+```bash
+cargo xtask templates-check
+```
+
+It creates a project from every template and variant in `target/engine-test/templates`, and a plugin from every plugin template in one more project, generates their bindings from a reflection dump made with every feature, and runs `cargo check` on their Rust code. The dump is exported once by UBT, from a project with every feature enabled, into `target/engine-test/full-dump`; delete it after changing the engine or the exporter. Name templates to check only those: `cargo xtask templates-check third-person:combat plugin:tour`. Nothing runs in the engine: what the templates do is still checked by playing them.
+
 ## Testing in the editor, headless
 
 What happens in the editor is tested with editor Python, in an editor with no window:
