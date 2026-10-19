@@ -94,6 +94,12 @@ Why Rusteal is the way it is. Each record gives the decision, the reasons, what 
 - **Why.** A gameplay system and its editor tools belong in one plugin, as C++ plugins put a runtime and an editor module side by side. Naming every part of a library after its C++ module keeps the two libraries apart everywhere the plugin's name was used, and leaves single-library plugins unchanged.
 - **Implies.** The editor library cannot depend on the runtime crate: in a dynamic build its library would register the runtime crate's types a second time, so `rusteal build` refuses it; it reaches the runtime library's classes through reflection until libraries see each other's types (M6). The static build leaves the editor library out (`d25f423`, `c0dd537`, `9c2906f`, `e93efbb`).
 
+### A20. An editor plugin for any project carries a copy of the runtime, renamed after it
+- **Decision.** `rusteal plugin package --standalone` copies the Rusteal plugin's C++ into an editor plugin as `<Name>Rusteal` and `<Name>RustealEditor`, every `Rusteal` in names and code becoming `<Name>Rusteal`; the copy looks up the Rusteal types Rust asks for under those names, and the plugin's Rust library, unchanged, is prebuilt into `Source/ThirdParty/RustLibraries/<Platform>/`, without Rust sources.
+- **Why.** Editor tools are meant for any project, Blueprint and C++ ones included, installed in the engine like plugins from Fab, which may not depend on a plugin made by someone else. Several such tools, and a Rusteal project's own plugin, can be loaded in one editor: the renaming keeps their C++ types, classes, symbols and console commands apart.
+- **Rejected.** Rusteal installed in the engine as a shared dependency (Fab refuses it, and every tool would be tied to one Rusteal version); renaming only the types that clash (a missed one shows up only when two tools meet).
+- **Implies.** Only editor plugins: a gameplay plugin goes into a game, so the game is a Rusteal one. The renaming is textual and must keep working: lowercase `rusteal` names the Rust side and stays as it is (`fcadc17`, `f736ee2`, `3564bcf`, `b60839f`). See [Standalone editor plugins](../architecture/standalone.md).
+
 ## Runtime
 
 ### B1. Panics are caught at the boundary

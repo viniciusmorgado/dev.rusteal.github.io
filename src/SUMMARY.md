@@ -22,6 +22,7 @@
 - [Hot reload](./architecture/hot_reload.md)
 - [The CLI](./architecture/cli.md)
 - [The launcher](./architecture/launcher.md)
+- [Standalone editor plugins](./architecture/standalone.md)
 
 # Platforms
 
