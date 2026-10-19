@@ -223,6 +223,21 @@ Why Rusteal is the way it is. Each record gives the decision, the reasons, what 
 - **Decision.** `ENGINE_UNEXPORTED_FUNCTIONS` (`rusteal-codegen/src/config.rs`) joins every project's blocklist, as Rusteal's internal classes do (`2ffcf6b`, `bad00f6`). Likewise `ENGINE_PLUGIN_PACKAGES` names the plugin of an engine package a project maps without one, such as `GameplayAbilities` (`d61aba5`).
 - **Why.** A project's `[codegen.blocklist]` is written once by `rusteal new` and never migrated: a function newly bound by a fix would fail to link in every existing project.
 
+### D12. A struct the engine gives Rust is constructed in Rust's buffer, and owned
+- **Decision.** Whatever writes an engine struct into a buffer Rust owns (a function's return or out parameter, a property, an array element, a delegate parameter) constructs it there through its `UScriptStruct` (`InitializeStruct`, then `CopyScriptStruct`), and Rust takes it with `OwnedStruct::from_constructed`, which destroys it on drop; `clone()` copies it through the struct too (`5f16556`). A struct passed by reference is used in place, as `&mut OwnedStruct<T>`. The `UScriptStruct` is `TBaseStructure<T>::Get()`, or, for the engine's `NoExportTypes` (`FBox`, `FIntPoint`...), the one found by its path (`RustealFindScriptStruct`), so every reflected struct is an `OwnedStruct` (`984b2c0`).
+- **Why.** The wrappers `memcpy`'d a struct and destroyed the original, leaving Rust with its freed arrays; a copy into zeroed memory was never destroyed; structs with no `StaticStruct` crossed as raw `*const u8`, 190 functions in the default modules, their buffers leaked.
+- **Rejected.** A placement move (`new (Buf) T(MoveTemp(Value))`): some structs' move constructors are not exported (`FImportanceTexture`).
+
+### D13. `FText` is the engine's own, held by Rust
+- **Decision.** `Text` owns a heap `FText` the engine allocated (`new FText`), and crosses as its pointer; arguments take `impl Into<Text>` (`b8a0fe6`).
+- **Why.** Through `FString`, a text lost its namespace and key, so it could not be translated.
+- **Implies.** An `FText` parameter with a default value is a required one; the engine's text gatherer does not read Rust (roadmap, M8).
+
+### D14. An engine function that takes a delegate takes a closure, through a proxy kept by a registry
+- **Decision.** The closure is registered, `make_delegate` binds an `FScriptDelegate` to a new `URustealDelegateProxy`, and the wrapper passes it as `FRustealDelegateArg`, which converts to whatever dynamic delegate type the function takes (`1a44e6d`). Every proxy is kept by an `FGCObject` registry, holds its owner weakly, frees its closure when destroyed, and goes inert when its library unloads (`5542357`, `b7ff413`).
+- **Why.** Nothing referenced the proxies: the first garbage collection destroyed them, and delegates stopped calling Rust, silently. Naming each delegate's C++ type would need the exporter to give it; the conversion operator needs none, and is limited to `FScriptDelegate`-derived types so that overloads taking a static delegate stay unambiguous.
+- **Implies.** For a static function the proxy's owner is the transient package and its world is `GWorld`: it lives until the library unloads.
+
 ## CLI
 
 ### E1. The CLI is also a Cargo subcommand
