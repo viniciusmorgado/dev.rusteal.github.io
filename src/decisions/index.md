@@ -173,6 +173,10 @@ Why Rusteal is the way it is. Each record gives the decision, the reasons, what 
 - **Why.** The generated bindings crate takes `glam` from the project's workspace while `rusteal-core` takes it from Rusteal's; with two versions they are two crates whose types do not mix, and the bindings stop compiling.
 - **Implies.** Bumping `glam` in the workspace means bumping `GLAM_VERSION` with it. Projects that follow a checkout (`--runtime-path`) are not upgraded: change their `glam` by hand.
 
+### C5. A breaking change ships as a feature, with a note `rusteal upgrade` prints
+- **Decision.** An incompatible API change goes in under a `feat:` subject, never a breaking-change one, until 1.0; its note is added to `MIGRATIONS` (`rusteal-cli/src/upgrade_cmd.rs`) under the version it ships in, and to the game developer's handbook ([Versions and upgrades](https://viniciusmorgado.github.io/game.rusteal.github.io/getting_started/versions.html)). `rusteal upgrade` prints the notes of the versions it crosses before it builds (`150d3ed`).
+- **Why.** The release pipeline turns a breaking-change subject into a major bump, 1.0.0, which is a milestone of its own. Game code cannot be rewritten reliably, but the compiler points at every line once the note says what changed.
+
 ## Code generation
 
 ### D1. The bindings are generated into each game project and committed there
@@ -201,6 +205,23 @@ Why Rusteal is the way it is. Each record gives the decision, the reasons, what 
 - **Decision.** For an out parameter or a return value of struct type, the generated binding allocates `rusteal_core::struct_size_by_name("<Struct>")` bytes, the engine's `GetStructureSize()`, looked up once per call site (`param_helpers::struct_buffer_expr`); the C++ wrapper copies `sizeof(F<Struct>)` into it.
 - **Why.** The buffers were 256 bytes whatever the struct: `FHitResult` is larger, and every sweep (`K2_SetRelativeLocation`, `K2_SetActorLocation`, ...) wrote past the end of the buffer into the heap. macOS's allocator caught it, a crash in `malloc` or a bad pointer later; the other platforms corrupted memory silently. Found with Guard Malloc ([Testing a change](../contributing/testing.md#memory-errors-on-macos)).
 - **Implies.** Never size a buffer the engine writes into from a guess; the codegen test `struct_out_buffers_take_the_engine_size` checks the out parameters.
+
+### D8. Strings cross whole and as UTF-8
+- **Decision.** A string the engine returns is written with `RustealWriteUtf8` (`RustealUtf8.h`): UTF-8, and when it is longer than the buffer the binding gave, kept aside under the buffer's address for `take_pending_utf8`, which `rusteal_core::take_utf8` calls (`78cd7f9`). Strings from Rust are converted from exactly the bytes passed (`RustealUtf8ToFString`, `1dc64d3`).
+- **Why.** The wrappers converted to ANSI and cut at 512 bytes, which could split a character; the reverse conversion read past the end of Rust's bytes. Both found by the engine harness.
+
+### D9. Engine interfaces are named by their `UInterface`, and cross as objects
+- **Decision.** The exporter names an interface by its `UInterface` (`BlendableInterface`), not the native class (`IBlendableInterface`); the wrappers build a `TScriptInterface` with `RustealToScriptInterface` (`RustealInterface.h`), which keeps the object and sets the native pointer when there is one; `FScriptInterface`, the generic `IInterface`, is `UObjectRef<Object>` (`2ffcf6b`).
+- **Why.** The native name matched no class, so every engine function and property with an interface was dropped. The engine's own `TScriptInterface(UObject*)` clears the object when it does not implement the interface natively, which breaks Blueprint-implemented interfaces and `IInterface`.
+
+### D10. Engine soft references cross as paths, weak ones as objects
+- **Decision.** An engine `TSoftObjectPtr<T>` is `SoftObjectRef<T>` and crosses the boundary as its path, a string; `TWeakObjectPtr<T>` is `TWeakObjectPtr<T>` and crosses as the resolved object, through `ObjectPointer` (`d5122d2`).
+- **Why.** As `UObjectRef<T>`, an unloaded soft reference read as null and lost its path, and a function taking one could only be given a loaded object; a weak one read as a strong handle that could dangle.
+- **Implies.** Arrays of soft references stay `UeArray<UObjectRef<T>>` of the loaded objects; functions with a soft reference and a container are skipped.
+
+### D11. Engine functions with no export macro are left out of every project
+- **Decision.** `ENGINE_UNEXPORTED_FUNCTIONS` (`rusteal-codegen/src/config.rs`) joins every project's blocklist, as Rusteal's internal classes do (`2ffcf6b`).
+- **Why.** A project's `[codegen.blocklist]` is written once by `rusteal new` and never migrated: a function newly bound by a fix would fail to link in every existing project.
 
 ## CLI
 
@@ -266,6 +287,10 @@ Why Rusteal is the way it is. Each record gives the decision, the reasons, what 
 - **Decision.** `rusteal plugin package --precompiled` builds the plugin's Rust libraries with the release profile, then runs `BuildPlugin` with `-Dependencies=<project>/Plugins/Rusteal/Rusteal.uplugin`, which copies the Rusteal plugin into the host project `BuildPlugin` makes. The plugin's `Config/FilterPlugin.ini` adds the Rust libraries, the Rust workspace without `target/` and `rusteal.toml` to the package. A plugin whose `.uplugin` says `"Installed": true` is left alone by `rusteal build` and `rusteal generate`; `rusteal plugin merge` joins the per-platform files of packages made on several platforms.
 - **Why.** `BuildPlugin` builds a plugin in a project of its own, where the Rusteal plugin it depends on was missing; passing it as a dependency needs no Rusteal installed in the engine. The sources still travel, since a static build compiles the plugin's crates into the game's archive.
 - **Implies.** A precompiled plugin works only in projects at the same Rusteal and engine version, as any plugin does. Each platform's binaries are built on that platform (`f559969`, `ef88af5`).
+
+### E17. `rusteal build` goes on when the code generated before no longer compiles
+- **Decision.** When the first UBT pass fails and the reflection dump was written, the build prints so, generates the code again and builds it in step 3; it stops at once only when it was asked for step 1 alone (`23d570d`).
+- **Why.** After a CLI update, the first pass compiles the wrappers an older version generated; when a fix changes them they may not compile, and the build stopped before the step that regenerates them, leaving the project stuck.
 
 ## Hot reload
 

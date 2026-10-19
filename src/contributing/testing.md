@@ -60,6 +60,18 @@ So: without it for a real game, with it while working on Rusteal — a change in
 `rusteal-core` shows up in the project you test with on the next `build`,
 with nothing to publish in between.
 
+## The engine harness
+
+What crosses the boundary (properties, functions called by reflection, engine functions, strings, interfaces, soft and weak references, delegates, tasks) is checked in a running game by one command:
+
+```bash
+cargo xtask engine-test
+```
+
+It builds this checkout's CLI, creates `target/engine-test/RustealTests` with `--runtime-path` (or updates it with `setup`), copies the checks from `tests/engine/src` into its game crate, regenerates the bindings and builds the project, then runs it as a game with no window (`-game -nullrhi`; `ProcessEvent` does not run functions in the editor's world). The console command `rusteal_tests.run` runs every check of `tests/engine/src/checks.rs` and writes a `PASS` or `FAIL` line for each to the results file, and the game quits; a run that takes more than ten minutes is killed. It prints the results and fails when one check does. The logs are in `target/engine-test/logs/`.
+
+A check is a function from a `Context` (the game's world) to an `Outcome`, listed in `ALL`; one that waits for the engine returns `Outcome::Pending` and is polled every tick. Reproduce a boundary bug here first, and keep the check once it passes.
+
 ## Testing in the editor, headless
 
 What happens in the editor is tested with editor Python, in an editor with no window:
