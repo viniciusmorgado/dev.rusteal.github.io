@@ -217,7 +217,7 @@ Why Rusteal is the way it is. Each record gives the decision, the reasons, what 
 ### D10. Engine soft references cross as paths, weak ones as objects
 - **Decision.** An engine `TSoftObjectPtr<T>` is `SoftObjectRef<T>` and crosses the boundary as its path, a string; `TWeakObjectPtr<T>` is `TWeakObjectPtr<T>` and crosses as the resolved object, through `ObjectPointer` (`d5122d2`).
 - **Why.** As `UObjectRef<T>`, an unloaded soft reference read as null and lost its path, and a function taking one could only be given a loaded object; a weak one read as a strong handle that could dangle.
-- **Implies.** Arrays of soft references stay `UeArray<UObjectRef<T>>` of the loaded objects; functions with a soft reference and a container are skipped.
+- **Implies.** Functions with a soft reference and a container are skipped. Arrays, maps and sets of soft references were `UeArray<UObjectRef<T>>` of the loaded objects; since `610aa47` their elements cross as paths too, `UeArray<SoftObjectRef<T>>`.
 
 ### D11. Engine functions with no export macro are left out of every project
 - **Decision.** `ENGINE_UNEXPORTED_FUNCTIONS` (`rusteal-codegen/src/config.rs`) joins every project's blocklist, as Rusteal's internal classes do (`2ffcf6b`, `bad00f6`). Likewise `ENGINE_PLUGIN_PACKAGES` names the plugin of an engine package a project maps without one, such as `GameplayAbilities` (`d61aba5`).
@@ -237,6 +237,13 @@ Why Rusteal is the way it is. Each record gives the decision, the reasons, what 
 - **Decision.** The closure is registered, `make_delegate` binds an `FScriptDelegate` to a new `URustealDelegateProxy`, and the wrapper passes it as `FRustealDelegateArg`, which converts to whatever dynamic delegate type the function takes (`1a44e6d`). Every proxy is kept by an `FGCObject` registry, holds its owner weakly, frees its closure when destroyed, and goes inert when its library unloads (`5542357`, `b7ff413`).
 - **Why.** Nothing referenced the proxies: the first garbage collection destroyed them, and delegates stopped calling Rust, silently. Naming each delegate's C++ type would need the exporter to give it; the conversion operator needs none, and is limited to `FScriptDelegate`-derived types so that overloads taking a static delegate stay unambiguous.
 - **Implies.** For a static function the proxy's owner is the transient package and its world is `GWorld`: it lives until the library unloads.
+
+### D15. A container element crosses in a buffer of its size
+- **Decision.** `ContainerElement` gives each value's `write_size()` and each type's `read_size()`; an element is written into a buffer of its size, and read into one of `read_size()`, read again when the engine reports more (`ReadElement` reports the full size and writes only what fits) (`1a38c3e`).
+- **Why.** Elements went through a fixed 4096-byte stack buffer with no bounds check: a longer string, or a larger struct, wrote past it, and the engine cut strings to it.
+
+### D16. Rust maps and sets are reified with their key and value properties
+- **Decision.** `RustealReifyPropExtra` carries a second element type, `value_prop_type`, with its handles in `value`, a pointer to another extra; a map's key and a set's element are the first one, and get `CPF_HasGetValueTypeHash` (`9a79775`). Keys are the hashable kinds: numbers, objects, classes, `FName` and `String`.
 
 ## CLI
 
