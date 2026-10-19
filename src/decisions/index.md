@@ -220,7 +220,7 @@ Why Rusteal is the way it is. Each record gives the decision, the reasons, what 
 - **Implies.** Arrays of soft references stay `UeArray<UObjectRef<T>>` of the loaded objects; functions with a soft reference and a container are skipped.
 
 ### D11. Engine functions with no export macro are left out of every project
-- **Decision.** `ENGINE_UNEXPORTED_FUNCTIONS` (`rusteal-codegen/src/config.rs`) joins every project's blocklist, as Rusteal's internal classes do (`2ffcf6b`).
+- **Decision.** `ENGINE_UNEXPORTED_FUNCTIONS` (`rusteal-codegen/src/config.rs`) joins every project's blocklist, as Rusteal's internal classes do (`2ffcf6b`, `bad00f6`). Likewise `ENGINE_PLUGIN_PACKAGES` names the plugin of an engine package a project maps without one, such as `GameplayAbilities` (`d61aba5`).
 - **Why.** A project's `[codegen.blocklist]` is written once by `rusteal new` and never migrated: a function newly bound by a fix would fail to link in every existing project.
 
 ## CLI
@@ -291,6 +291,10 @@ Why Rusteal is the way it is. Each record gives the decision, the reasons, what 
 ### E17. `rusteal build` goes on when the code generated before no longer compiles
 - **Decision.** When the first UBT pass fails and the reflection dump was written, the build prints so, generates the code again and builds it in step 3; it stops at once only when it was asked for step 1 alone (`23d570d`).
 - **Why.** After a CLI update, the first pass compiles the wrappers an older version generated; when a fix changes them they may not compile, and the build stopped before the step that regenerates them, leaving the project stuck.
+
+### E18. `rusteal build` exports the reflection again when the bindings need a new engine plugin
+- **Decision.** When step 2 adds plugins to a descriptor (a feature whose modules come from an engine plugin: `state-tree`, `niagara`, `chaos-vehicles`...), it touches `RustealGeneratorDummy.h`, runs step 1 again and generates from the new dump (`bad00f6`).
+- **Why.** UHT runs only when a project header changes: enabling the plugin did not make it run, so the dump never had the plugin's types and the feature's bindings stayed empty, build after build.
 
 ## Hot reload
 
