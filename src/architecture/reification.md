@@ -4,7 +4,7 @@ A `#[uclass]` struct becomes a real `UClass` when its library loads: Rusteal **r
 
 ## The macros (`rusteal-macros`)
 
-Only four procedural macros exist, and `rusteal-runtime` re-exports them: `#[uclass]`, `#[uclass_impl]`, `#[ustruct]` and `#[uenum]`. `#[uproperty]`, `#[component]`, `#[ufunction]`, `#[class_defaults]` and `#[udelegate]` are inert attributes that the outer macro parses and strips.
+Five procedural macros exist, and `rusteal-runtime` re-exports them: `#[uclass]`, `#[uclass_impl]`, `#[ustruct]`, `#[uenum]` and `#[uinterface]`. `#[uproperty]`, `#[component]`, `#[ufunction]`, `#[class_defaults]` and `#[udelegate]` are inert attributes that the outer macro parses and strips.
 
 **Names** (`prop_type.rs`): a Rust name becomes the Unreal one in PascalCase (`move_speed` → `MoveSpeed`), with `b_` turned into UE's bool prefix (`b_can_dash` → `bCanDash`); `name = "..."` overrides it. A type's id is the FNV-1a hash of its module path and identifier (`rusteal_core::type_id(concat!(module_path!(), "::", "Name"))`, computed at compile time), so classes with the same name in two crates or two modules have different ids; `#[uclass]` gives it as `UeClass::RUST_TYPE_ID`, which is 0 for engine classes, and a class's parent and components contribute theirs through it. Two classes with the same name in one library still share an Unreal name in the library's package, which the engine refuses.
 
