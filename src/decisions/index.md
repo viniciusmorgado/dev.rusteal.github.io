@@ -245,6 +245,36 @@ Why Rusteal is the way it is. Each record gives the decision, the reasons, what 
 ### D16. Rust maps and sets are reified with their key and value properties
 - **Decision.** `RustealReifyPropExtra` carries a second element type, `value_prop_type`, with its handles in `value`, a pointer to another extra; a map's key and a set's element are the first one, and get `CPF_HasGetValueTypeHash` (`9a79775`). Keys are the hashable kinds: numbers, objects, classes, `FName` and `String`.
 
+### D17. A Rust function's parameters cross as properties of its parameter buffer
+- **Decision.** `DynamicValue` (`write_to`, `read_from`) reads and writes a value of any type a property holds in any container of it; a function's parameter buffer is one, with each parameter's `FProperty` found once and kept beside its offset. The function thunk, `DynamicCall::set_value`/`value`, Blueprint event dispatch and `#[udelegate]` all use it for strings, texts, names, containers, soft and weak references and interfaces (`4cde66e`, `406c8ea`, `f013a67`). Function parameters take Rust's `Vec`, `HashMap` and `HashSet`, copied, where properties hold `UeArray`, `UeMap` and `UeSet`.
+- **Why.** These types own memory the engine manages: copying their bytes in and out of a call, as scalars are, would share or leak it. The property API that already reads and writes them on objects works on any container.
+- **Rejected.** `UeArray` and friends as parameters (a handle into a buffer that is freed when the call returns).
+
+### D18. A `BlueprintNativeEvent` is dispatched through the engine
+- **Decision.** The macro renames the user's body to `<name>_implementation`, registers it as the event's native function, and gives the method's own name to a dispatcher that calls the event through `ProcessEvent`, so a Rust or Blueprint override runs when there is one (`5d04da6`).
+- **Why.** Calling the Rust body directly would skip the children's overrides, which is the point of the event; C++'s `_Implementation` convention is the one Unreal developers know.
+
+### D19. A Rust class's functions are registered after its Rust parent's
+- **Decision.** The reify registry orders the function blocks by the classes' dependency order, as it does the classes (`378cb32`).
+- **Why.** An `Override` copies its parameters from the parent's function; registered first, it found a function with none.
+
+### D20. A `#[ufunction]` with no receiver is static
+- **Decision.** No `self` means `FUNC_Static`, and the thunk calls `Type::method(args)`; events refuse it. Function metadata (`CallInEditor`, `category`, `meta(...)`, the doc comment as `ToolTip`) goes through `set_function_metadata` (`e7fdc27`).
+- **Why.** It is how Rust spells an associated function, and a function library is a class of them.
+
+### D21. Single-cast and sparse delegates are reified like the multicast one
+- **Decision.** `add_delegate` takes a kind: a single-cast delegate is an `FDelegateProperty` executed with `execute_delegate`; a sparse one an `FMulticastSparseDelegateProperty` whose signature is a `USparseDelegateFunction` naming the class and the delegate, with its offset registered with `FSparseDelegateStorage` when the class is finalized. A single-cast binding is undone only by its own `DelegateBinding` (`unbind_delegate` takes its callback id) (`f013a67`).
+- **Why.** The engine resolves a sparse delegate's owner from that offset, by class name; with none registered it asserts. A binding dropped after another replaced it unbound the newer one.
+- **Implies.** Reified classes are not `CLASS_Native`, so `FSparseDelegateStorage::ResolveSparseDelegate` (used only by C++ accessors) does not find them; the property paths Blueprints and Rust use do not need it.
+
+### D22. An `Override` duplicates the parameters of the event it overrides
+- **Decision.** `CopyParamsFromParentFunction` copies each parameter with `FField::Duplicate`, inner properties included (`ac543d8`).
+- **Why.** It rebuilt them from a list of types and skipped the others (arrays, maps, sets, soft and weak references, interfaces), so the override's layout no longer matched the event's.
+
+### D23. Every attribute refuses the arguments it does not know
+- **Decision.** `#[uclass]`, `#[component]`, `#[uproperty]`, `#[ufunction]`, `#[udelegate]`, `#[uclass_impl]` and `#[class_defaults]` fail with the list of what they take (`c7d30d5`).
+- **Why.** Ignored arguments compiled and did nothing: `Blueprintable` or `Replicated` looked like they worked.
+
 ## CLI
 
 ### E1. The CLI is also a Cargo subcommand
