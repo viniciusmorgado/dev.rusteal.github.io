@@ -46,8 +46,8 @@ On the C++ side, `StartupModule` adds `TickLibraries` to the core ticker (`FTSTi
 `DynamicCall` is what the bindings do not cover: functions defined in Blueprints, a `BlueprintImplementableEvent`'s implementation, delegates.
 
 1. `DynamicCall::new(obj, "Function")` checks the object, finds the function by reflection (`function_not_found` otherwise) and allocates its parameter buffer; `for_delegate(obj, property)` takes the delegate's signature instead.
-2. `set(name, value)` finds the parameter and its offset and writes the value (an `FName` through the property, to keep its display index); `set_struct` copies a struct.
-3. `call()` runs `reflection_call_function`; `broadcast()` a multicast delegate. The result's `get(name)` reads an out parameter or the return value.
+2. `set(name, value)` finds the parameter and its offset and writes the value (an `FName` through the property, to keep its display index); `set_struct` copies a struct; `set_value` writes any `DynamicValue` (strings, texts, containers, soft and weak references) through the parameter's property.
+3. `call()` runs `reflection_call_function`; `broadcast()` a multicast delegate, `execute()` a single-cast one. The result's `get(name)` reads a scalar out parameter or return value, `value(name)` any `DynamicValue`.
 4. The buffer is freed when the call or its result is dropped.
 
 The macros generate `DynamicCall`s for `BlueprintImplementableEvent` bodies and `#[udelegate]` broadcasts, logging a failure as a warning and returning a default.

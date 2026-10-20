@@ -37,7 +37,7 @@ The flags map to `CPF_*` as UHT's do:
 
 `category` and the `BindWidget*` flags become property metadata, which only exists in editor builds (`WITH_EDITORONLY_DATA`).
 
-A property's type is one of `bool`, `i32`, `i64`, `u8`, `f32`, `f64`, `UObjectRef<T>`, `SubclassOf<T>`, `SoftObjectRef<T>`, `OwnedStruct<T>`, `FName`, `String`, an engine or Rust enum (any capitalized path without generics), or a `UeArray` of scalars, objects, classes, `FName`s or `OwnedStruct`s. A `const _` block asserts at compile time that the parent and every component type are Unreal classes.
+A property's type is `bool`, any integer, `f32`, `f64`, `String`, `FName`, `Text`, `UObjectRef<T>`, `SubclassOf<T>`, `SoftObjectRef<T>`, `SoftClassRef<T>`, `TWeakObjectPtr<T>`, `ScriptInterface<dyn I>`, `OwnedStruct<T>`, an engine or Rust enum (any capitalized path without generics), or a `UeArray<T>`, `UeMap<K, V>` or `UeSet<T>` of those (`prop_type::map_type`; keys and set elements are the hashable kinds). `RustealReifyPropExtra` carries what the type needs: a class, a struct, an enum, an inner element's type, and for a map its value's. A `const _` block asserts at compile time that the parent and every component type are Unreal classes.
 
 **The expansion**, in order:
 
@@ -52,7 +52,7 @@ A property's type is one of `bool`, `i32`, `i64`, `u8`, `f32`, `f64`, `UObjectRe
 
 It takes no arguments and relies on the names `#[uclass]` generated, so it sits in the same module as the struct.
 
-`#[ufunction(...)]` accepts `BlueprintCallable` (the default), `BlueprintPure`, `Override`, `BlueprintImplementableEvent` (at most one of the last three), `Exec` and `name`:
+`#[ufunction(...)]` accepts `BlueprintCallable` (the default), `BlueprintPure`, `Override`, `BlueprintImplementableEvent`, `BlueprintNativeEvent` (at most one of the last four), `Exec`, `CallInEditor`, `name`, `category` and `meta(...)`; anything else is an error. The doc comment becomes the `ToolTip`, and the metadata goes through `reify_set_function_metadata`. A method with no receiver is static (`FUNC_Static`), and its thunk calls `Type::method(args)`:
 
 | Kind | Flags |
 |---|---|
@@ -60,11 +60,12 @@ It takes no arguments and relies on the names `#[uclass]` generated, so it sits 
 | Pure | the same, `\| FUNC_BlueprintPure` |
 | Override | `FUNC_Native \| FUNC_BlueprintEvent \| FUNC_Public` |
 | ImplementableEvent | `FUNC_Event \| FUNC_BlueprintEvent \| FUNC_BlueprintCallable \| FUNC_Public`, no `FUNC_Native` |
+| NativeEvent | `FUNC_Native \| FUNC_Event \| FUNC_BlueprintEvent \| FUNC_BlueprintCallable \| FUNC_Public` |
 | `Exec` | adds `FUNC_Exec` |
 
-Parameters are scalars, `UObjectRef`, `SubclassOf`, `UStructRef`, enums and `OutRef<T>`; an override's parameters come from the parent's function, not from Rust. A return type of `RustealResult<T>` (or `Result<T, RustealError>`) makes the function fallible: Unreal sees `T`, and an `Err` is raised as a script error (see [Errors](errors.md)). An `ImplementableEvent` has an empty body, which the macro replaces with a `DynamicCall` to the Blueprint's implementation.
+Parameters and returns are what `prop_type::map_fn_type` maps: a property's types, with `Vec<T>`, `HashMap<K, V>` and `HashSet<T>` instead of the engine containers, `Option<ScriptInterface<dyn I>>`, and `UStructRef<T>` for a struct the engine lends; a `&mut T` parameter is an out parameter (`CPF_OutParm`). Scalars, objects, classes and enums are read from and written to the parameter buffer at their offsets; the other kinds cross as properties of the buffer, through `DynamicValue` and the property handles the thunk finds once (`crossed_as_property`). An override's parameters come from the parent's function, duplicated with `FField::Duplicate`, not from Rust. A `NativeEvent`'s body is renamed `<name>_implementation`, registered as the native function, and a dispatcher with the method's name calls the event through `ProcessEvent`. A return type of `RustealResult<T>` (or `Result<T, RustealError>`) makes the function fallible: Unreal sees `T`, and an `Err` is raised as a script error (see [Errors](errors.md)). An `ImplementableEvent` has an empty body, which the macro replaces with a `DynamicCall` to the Blueprint's implementation.
 
-`#[class_defaults]` (one per block, `&mut self`) runs on the class default object after `finalize`; a `RustealResult<()>` it returns is logged on error. `#[udelegate]` (an empty `&self` method, `name` optional) declares a multicast delegate: its body becomes a broadcast, and the macro adds `<name>_add(closure)` and `<name>_add_ufunction(target, "Function")`.
+`#[class_defaults]` (one per block, `&mut self`) runs on the class default object after `finalize`; a `RustealResult<()>` it returns is logged on error. `#[udelegate]` (an empty `&self` method; `name`, and `single` or `sparse`, optional) declares a multicast delegate, a single-cast one or a sparse one: its body becomes a broadcast (an execute for a single-cast one), and the macro adds `<name>_add(closure)` and `<name>_add_ufunction(target, "Function")` (`_bind` and `_bind_ufunction` for a single-cast one). Its parameters take what a function's do, and cross the same way.
 
 The expansion registers each function with a closure (`register_function`, whose returned index is the callback id), then `reify_add_function` and its parameters with `CPF_Parm` (and a `ReturnValue` with `CPF_ReturnParm`); events get callback id 0. It submits a `ClassFunctionRegistration { krate, type_id, shape, register_functions, class_defaults }`.
 
@@ -124,7 +125,7 @@ The engine owns the object; Rust owns its data. `FRustealDeleteListener::NotifyU
 ## Structs, delegates and subsystems
 
 - **Structs.** `CreateStructImpl` makes a `UScriptStruct` (`BlueprintType`), reused on reload; `FinalizeStructImpl` finalizes nested structs first, then binds, links and prepares the struct ops. `UStructRef<T>` borrows memory Unreal owns (a parameter buffer); `OwnedStruct<T>` owns a buffer, initialized and destroyed through reflection.
-- **Delegates.** `#[udelegate]` adds a signature function `<Name>__DelegateSignature` and an `FMulticastInlineDelegateProperty` (`BlueprintAssignable`). A broadcast is a `DynamicCall::for_delegate`. Binding a Rust closure stores it in `delegate_registry` under an id and creates a `URustealDelegateProxy` (outer: the owner) whose `ProcessEvent` forwards the broadcast to `invoke_delegate_callback`. A `DelegateBinding` unbinds when dropped, unless `detach()`ed; a closure re-entered while it runs is skipped.
+- **Delegates.** `#[udelegate]` adds a signature function `<Name>__DelegateSignature` and an `FMulticastInlineDelegateProperty` (`BlueprintAssignable`); `single` makes it an `FDelegateProperty`, and `sparse` an `FMulticastSparseDelegateProperty` with a `USparseDelegateFunction` signature, whose offset `FinalizeClassImpl` registers with `FSparseDelegateStorage`. A broadcast is a `DynamicCall::for_delegate`. Binding a Rust closure stores it in `delegate_registry` under an id and creates a `URustealDelegateProxy` (outer: the owner) whose `ProcessEvent` forwards the broadcast to `invoke_delegate_callback`. A `DelegateBinding` unbinds when dropped, unless `detach()`ed; a closure re-entered while it runs is skipped.
 - **Subsystems.** The engine only creates subsystems of native classes, so `RustealSubsystems.h` declares abstract native parents that turn the virtuals into events Rust overrides: `URustealGameInstanceSubsystem`, `URustealWorldSubsystem` (a tickable world subsystem with `ReceivePostInitialize`, `ReceiveWorldBeginPlay`, `ReceiveTick`, `bWantsTick`, `bCreateInEditorWorlds`), `URustealEngineSubsystem`, `URustealLocalPlayerSubsystem` (`ReceivePlayerControllerChanged`), and, in the editor module, `URustealEditorSubsystem`. Each forwards `ShouldCreateSubsystem`, `Initialize` and `Deinitialize` to `ReceiveShouldCreateSubsystem`, `ReceiveInitialize` and `ReceiveDeinitialize`.
 
 ## Object references
