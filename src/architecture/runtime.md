@@ -24,6 +24,13 @@
 | `console.rs`, `input.rs`, `widget.rs`, `logging.rs` | Console commands and variables, Enhanced Input binding, widgets, `ulog!`. |
 | `task.rs` | Background work on the engine's tasks, dedicated engine threads (`spawn_thread`, `EngineThread`), the game-thread queue, tick hooks, `is_game_thread` (the engine's `IsInGameThread`), `worker_count`. |
 | `sync.rs` | The only source of `Mutex`, `RwLock`, `Once`, `OnceLock` and `thread_local!` in `rusteal-core`, with `lock_or_recover` and friends: what a platform whose `std` lacks them would replace. |
+| `executor.rs` | Async tasks on the game thread: `spawn_local`, `JoinHandle`, `AbortHandle`, `next_frame`, `run_blocking` (see below). |
+| `timer.rs` | World timers with closures, `TimerHandle`, `sleep` and `sleep_real`. |
+| `latent.rs` | Awaiting the engine's latent functions (`LatentCall`) and running an `async #[ufunction]` as a latent action. |
+| `loading.rs` | Background loads through the asset manager's `FStreamableManager`. |
+| `event.rs`, `events.rs` | `once()`, the channel behind every `next()`; native engine events (`NativeEvent`, `EventBinding`). |
+| `http.rs` | HTTP requests through `FHttpModule`. |
+| `method.rs` | `method(self, Self::x)` and the `RustObject` trait. |
 | `time.rs` | The engine's clock (`FPlatformTime::Seconds`): `now_seconds`, `sleep`, and `Instant`, shaped like `std::time::Instant`. |
 | `std_fallback.rs` | The `std` threads, clock and core count, used only when no engine is there (the unit tests). |
 | `error.rs`, `ffi_guard.rs` | `RustealError` and panics (see [Errors](errors.md)). |
@@ -38,6 +45,8 @@ The thread that runs `rusteal_init` is recorded as the game thread. Every queue 
 - **`on_tick(f)`** registers a hook called every tick with the delta time, until its `TickHandle` (which names its module) is removed (the handle is `#[must_use]`: dropping it keeps the hook forever).
 - **`tick(delta)`**, the `on_tick` callback: drains the queue, then calls the hooks, each under `catch_unwind`, without holding the lock while user code runs, so a hook may add or remove hooks.
 - **`shutdown()`**, from the module's shutdown: waits for its running tasks (warning after a second), joins its dropped threads, then clears its queue and hooks, so no thread runs code that is unloaded.
+
+- **`spawn_local(&owner, future)`** adds a task to the module's executor (`executor.rs`): `tick` polls the tasks whose waker fired, after the jobs, and drops those whose owner is gone (see [Decisions](../decisions/index.md), D24). `shutdown()` drops them before the hooks are cleared.
 
 On the C++ side, `StartupModule` adds `TickLibraries` to the core ticker (`FTSTicker::GetCoreTicker()`), which calls every library's `on_tick` each frame.
 
@@ -61,7 +70,7 @@ The macros generate `DynamicCall`s for `BlueprintImplementableEvent` bodies and 
 ## Services
 
 - **Console** (`console.rs`): `register_command(name, help, closure)` stores the closure in `delegate_registry` and registers the command, which receives its arguments and a `CommandContext` whose `world::<W>()` checks the world's handle into a typed reference; a name already registered is refused. `ConsoleVariable<T>` (`bool`, `i32`, `f32`, `String`) registers a variable and reads and writes it as text. The plugin forgets a library's commands when it unloads.
-- **Input** (`input.rs`): `bind_action_raw(actor, action, trigger, "Function")` binds an Enhanced Input action to a `#[ufunction]`, whose parameters must be a prefix of `(FInputActionValue, ElapsedSeconds, TriggeredSeconds, UInputAction*)`; the actor needs an `UEnhancedInputComponent`. `should_display_touch_interface()` is the Slate check the templates use for touch controls.
+- **Input** (`input.rs`): `bind_action_closure_raw(actor, action, trigger, closure)` binds an action to a closure through `BindActionInstanceLambda`, with the value, elapsed and triggered times and the action in `RustealInputArgs`, unbound by its handle; `bind_action_raw(actor, action, trigger, "Function")` binds an Enhanced Input action to a `#[ufunction]`, whose parameters must be a prefix of `(FInputActionValue, ElapsedSeconds, TriggeredSeconds, UInputAction*)`; the actor needs an `UEnhancedInputComponent`. `should_display_touch_interface()` is the Slate check the templates use for touch controls.
 - **Widgets** (`widget.rs`): `create_widget_raw(owner, class)` picks the owner as `CreateWidget` does (player controller, world, game instance).
 - **Logging**: games log through the [`log`](https://docs.rs/log) crate. `rusteal-runtime/src/ue_log.rs` installs a `log::Log` when the library initializes (`init`), with `Info` as the default maximum level, and writes each record to the `LogRusteal` category: `error!` as an error, `warn!` as a warning, the rest at display level. Each dynamic library has its own `log` instance, so the game's and every plugin's loggers are independent; in a static build they share one, and the maximum level is the runtime's. Underneath, `ulog!(level, ...)` (`logging.rs`, `LOG_DISPLAY`, `LOG_WARNING`, `LOG_ERROR`) is the raw call, kept for older projects; it needs the API initialized.
 
