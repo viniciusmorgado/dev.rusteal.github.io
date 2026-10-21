@@ -15,8 +15,9 @@ Five procedural macros exist, and `rusteal-runtime` re-exports them: `#[uclass]`
 | `parent = Path` | Required: the engine or Rust class it derives from. |
 | `implements = "..."` / `[...]` | Interfaces by class path, starting with `/`. |
 | `config = "Name"` | The config category its `Config` properties are saved in. |
+| `subobject_class(Name = Type, ...)` | Inherited subobjects created as other classes (D35). |
 
-Other arguments are ignored without an error, and so are attributes written on the struct itself.
+Other arguments are refused (D23). Every class also gets `<Name>ThreadSafe`, the view a `#[ufunction(ThreadSafe)]` takes (D34).
 
 Fields are of three kinds:
 

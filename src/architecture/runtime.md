@@ -25,6 +25,7 @@
 | `task.rs` | Background work on the engine's tasks, dedicated engine threads (`spawn_thread`, `EngineThread`), the game-thread queue, tick hooks, `is_game_thread` (the engine's `IsInGameThread`), `worker_count`. |
 | `sync.rs` | The only source of `Mutex`, `RwLock`, `Once`, `OnceLock` and `thread_local!` in `rusteal-core`, with `lock_or_recover` and friends: what a platform whose `std` lacks them would replace. |
 | `executor.rs` | Async tasks on the game thread: `spawn_local`, `JoinHandle`, `AbortHandle`, `next_frame`, `run_blocking` (see below). |
+| `tick.rs` | Tick functions of their own (`TickFunction`, D36). |
 | `timer.rs` | World timers with closures, `TimerHandle`, `sleep` and `sleep_real`. |
 | `latent.rs` | Awaiting the engine's latent functions (`LatentCall`) and running an `async #[ufunction]` as a latent action. |
 | `loading.rs` | Background loads through the asset manager's `FStreamableManager`. |

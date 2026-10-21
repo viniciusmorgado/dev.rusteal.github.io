@@ -306,6 +306,36 @@ Why Rusteal is the way it is. Each record gives the decision, the reasons, what 
 - **Why.** A name is checked when the game runs, and a renamed method failed silently; the compiler checks a method path. The method no longer needs to be a `#[ufunction]`, so input handlers stop showing up in Blueprints.
 - **Implies.** `bind_action` changed its signature: a `feat` with a `rusteal upgrade` note, never a breaking-change commit (decided for M1's API changes as well).
 
+### D31. Engine virtuals reach Rust through generated C++ bases that raise events
+- **Decision.** `rusteal-codegen/src/cpp_gen/shims.rs` turns a list of virtuals, written as their C++ declarations, into `UCLASS(Abstract, Blueprintable)` bases: each virtual calls `Super` and then a `Receive<Name>` BlueprintImplementableEvent (before `Super` with `order = "before"`), and a virtual that returns a value, has out parameters or comes from an interface becomes a BlueprintNativeEvent whose `_Implementation` calls `Super` (or returns a default, for an interface). The Rust class overrides the event as any other (`ba27fc5`, `49a5235`, `89749e8`).
+- **Why.** A Rust class is a `URustealReifiedClass` created at runtime: its objects are the native parent's, with the parent's vtable, so no virtual can be overridden; only UFunctions can. The subsystem bases already worked this way, by hand.
+- **Rejected.** Patching vtables (undefined behaviour, and a different layout per compiler); generating a C++ class per Rust class (every game would need a C++ module, and a changed class could not hot reload).
+
+### D32. The curated bases are generated into the plugin's sources, which a test keeps current
+- **Decision.** `rusteal-codegen/shims/engine.toml` lists them, with sets of virtuals several bases share; `Public/RustealShims.h` and `Private/RustealShims.cpp` are generated from it and versioned. `cargo test -p rusteal-codegen --test shims` fails when they are stale; `-- --ignored regenerate_shims` rewrites them (`f2a62b6`).
+- **Why.** The plugin ships as C++ sources the project builds: UHT must see the bases in the first build, before any code generation runs.
+
+### D33. A project's bases are written before the engine build
+- **Decision.** `[[codegen.shims]]` in the project's `rusteal.toml` becomes `Generated/Shims/RustealProjectShims.{h,cpp}` in the project's copy of the plugin, written by `rusteal build` before step 1 when the steps build C++; their modules go in `Generated/shim_module_deps.txt`, which `Rusteal.Build.cs` reads beside `module_deps.txt`. `rusteal build` without C++ steps warns when the declared bases changed; a plugin's `rusteal.toml` cannot declare any (`e2dbd44`).
+- **Why.** Step 1's UHT export is what the bindings come from: a base generated later would have no bindings until the next full build.
+
+### D34. Only a ThreadSafe Rust function runs off the game thread, on a view without the Rust fields
+- **Decision.** Every `#[ufunction]` thunk first calls `reify_registry::refused_off_game_thread`, which logs once and skips the call on another thread. `#[ufunction(ThreadSafe)]` has no such check, adds `BlueprintThreadSafe`, and takes `<Class>ThreadSafe`, a struct `#[uclass]` generates with the object handle and the `#[uproperty]` accessors only. The C++ side's current library became `thread_local` (`4241d3f`, `e245aaa`).
+- **Why.** The engine runs the animation's thread-safe update, and the Blueprint thread-safe events, on worker threads while the game thread runs other code: a `&mut self` there aliases the game thread's, and the Rust-only fields have no synchronization. The properties are the engine's, which accepts that use, as it does for a Blueprint's thread-safe functions.
+- **Implies.** Engine functions called from a thread-safe function are not checked; the docs say to call only thread-safe ones, as C++ does.
+
+### D35. An inherited subobject's class is chosen before the native constructor runs
+- **Decision.** `#[uclass(subobject_class(Name = Type))]` registers the override through `add_default_subobject` with flag 4; `RustealClassConstructor` merges the chain's overrides (the most derived wins) and calls `FObjectInitializer::SetDefaultSubobjectClass` for each before calling the native parent's constructor (`3a89cb0`).
+- **Why.** It is where C++ does it, in the constructor's initializer list: the parent creates the subobject in its constructor, with the class the initializer holds.
+
+### D36. A tick function of its own is a C++ FTickFunction owned by the plugin
+- **Decision.** `RustealTickApiImpl.cpp` keeps an `FRustealTickFunction` per closure, registered on the world's persistent level in the group asked for; its prerequisites are actors', components' or another one's. A destroyed target, `remove`, a cleaned-up world and an unloaded library remove it; removal during a tick only marks it, and a core ticker deletes it afterwards (`5f7abf6`).
+- **Why.** A tick function cannot be deleted while the tick task graph runs it, and its object can be destroyed by the frame it ticks in.
+
+### D37. A thunk's locals cannot collide with a function's parameters
+- **Decision.** The arguments a thunk reads are bound as `__rusteal_arg_<name>` (`0c498ae`).
+- **Why.** A parameter named `params` or `obj` shadowed the thunk's own buffer and object, and a `Main(const FString& Params)` override did not compile.
+
 ## CLI
 
 ### E1. The CLI is also a Cargo subcommand
