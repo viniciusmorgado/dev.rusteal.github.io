@@ -372,6 +372,22 @@ Why Rusteal is the way it is. Each record gives the decision, the reasons, what 
 - **Decision.** `RustealProbe` gets `RustealProbeEditor` (`rusteal plugin editor`), filled from `tests/engine/plugin/editor/src`; its console command `rusteal_editor_tests.run`, and Python scripts run with `py`, append their results in the same editor run as the reload (`b76902f`, `44cf39c`, `43a2e94`).
 - **Lesson.** Editor Python reaches a Rust class's properties by either name and its functions by `call_method` with the Unreal name only, as for Blueprint classes: the check holds that.
 
+### D46. Gameplay tags declared in Rust are native tags
+- **Decision.** `gameplay_tags::declare` calls `UGameplayTagsManager::AddNativeGameplayTag`, after refusing names with an empty part, which the engine's own check lets through; the bindings' `declare_gameplay_tag` and `gameplay_tag` give an `FGameplayTag` by name, the second only for a tag the manager knows (`8e1b152`, `3034d17`).
+- **Why.** Since 5.8 the manager takes native tags after startup and adds their parents, so the hierarchy matches; a tag built by name alone (as before) matched nothing above it.
+
+### D47. Bases of optional engine plugins come with their binding feature
+- **Decision.** `rusteal-codegen/shims/<feature>.toml` holds the curated bases of a feature whose engine plugin is optional (`gameplay_abilities.toml`: `RustealAttributeSet`); `project_shim_specs` puts them before the project's `[[codegen.shims]]`, in `RustealProjectShims`, when the project binds the feature (`49cc79d`).
+- **Why.** The Rusteal module cannot depend on GameplayAbilities for every project; the project bases already build in the project's copy of the plugin, with the plugin dependency the feature adds.
+
+### D48. A base maps the parameters a Blueprint event cannot take, and has static functions
+- **Decision.** A virtual can declare `event_params` and the `event_args` that fill them, and a `default` body for its `_Implementation`; a base has `functions`, static `UFUNCTION`s with a C++ body. The game's bindings reach the project bases' functions: their header is under `Generated/Shims`, which the game's wrappers include by a relative path; a plugin's library still does not see them (`320a4cc`, `9d31464`).
+- **Why.** `FGameplayEffectModCallbackData` is not a `USTRUCT`: the event takes its spec, evaluated data and target. `FGameplayAttribute` holds a `TFieldPath`, which the bindings cannot write, so `AttributeOf` builds it in C++.
+
+### D49. Out parameters of an event raised by `ProcessEvent` are moved back
+- **Decision.** In `execCallRustFunction`, when `ProcessEvent` called the function, non-const out parameters and the return value go back to the caller's memory with a bitwise move, and const references do not go back at all; a call from the Blueprint VM still copies (`54c3f38`).
+- **Why.** `ProcessEvent` builds the frame with a `Memcpy` of the caller's parameters and never destroys out parameters: the frame's copy of a struct shares its heap data with the caller's, and copying it back with `operator=` destroyed what both pointed at. `FGameplayEffectSpec`, passed by const reference to `PostGameplayEffectExecute`, crashed the game.
+
 ## CLI
 
 ### E1. The CLI is also a Cargo subcommand
