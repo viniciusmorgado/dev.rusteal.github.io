@@ -23,7 +23,7 @@ Why Rusteal is the way it is. Each record gives the decision, the reasons, what 
 ### A4. One library for the game, one per Rusteal plugin
 - **Decision.** The game's code is a `cdylib` the Rusteal plugin loads. A Rusteal plugin has its own library, workspace, bindings and C++ module, which registers the library (`RustealRegisterPluginLibrary`, `RustealRegisterPluginLibraryChecked` since 0.9); its C++ symbols are prefixed `<Plugin>_` (`8e66cd7`, `5c1ac09`).
 - **Why.** Gameplay systems become reusable across projects. Classes, functions and pins remember the library that made them, and every call runs with that library current.
-- **Implies.** A Rust class cannot derive from another library's Rust class. A runtime plugin may add an editor library (A19).
+- **Implies.** A runtime plugin may add an editor library (A19). Since M6 the game's classes may derive from a runtime plugin's (D38, D39).
 
 ### A5. A plugin's classes live in `/Script/<Plugin>`
 - **Why.** Plugins from different authors cannot clash on a class name, and the engine sees them by their module (`0a7bbae`).
@@ -92,7 +92,7 @@ Why Rusteal is the way it is. Each record gives the decision, the reasons, what 
 ### A19. A plugin's editor library is a library of its own, named after its module
 - **Decision.** A runtime plugin's `rusteal.toml` may have an `[editor]` section: a second crate in the plugin's workspace, with its own bindings (`Rust/editor-bindings`), C++ module (`<Plugin>Editor`, type `Editor`), symbol prefix (`<Plugin>Editor_`), library file (`librusteal_<Plugin>Editor`) and package (`/Script/<Plugin>Editor`). Its module registers it with `RustealRegisterPluginModuleLibraryChecked(<Plugin>, <Plugin>Editor, ...)`, which finds the plugin by one name and names the library by the other.
 - **Why.** A gameplay system and its editor tools belong in one plugin, as C++ plugins put a runtime and an editor module side by side. Naming every part of a library after its C++ module keeps the two libraries apart everywhere the plugin's name was used, and leaves single-library plugins unchanged.
-- **Implies.** The editor library cannot depend on the runtime crate: in a dynamic build its library would register the runtime crate's types a second time, so `rusteal build` refuses it; it reaches the runtime library's classes through reflection until libraries see each other's types (M6). The static build leaves the editor library out (`d25f423`, `c0dd537`, `9c2906f`, `e93efbb`).
+- **Implies.** The editor library cannot depend on the runtime crate: in a dynamic build its library would register the runtime crate's types a second time, so `rusteal build` refuses it; it reaches the runtime library's classes through reflection; only the game's bindings get a plugin's classes (D38). The static build leaves the editor library out (`d25f423`, `c0dd537`, `9c2906f`, `e93efbb`).
 
 ### A20. An editor plugin for any project carries a copy of the runtime, renamed after it
 - **Decision.** `rusteal plugin package --standalone` copies the Rusteal plugin's C++ into an editor plugin as `<Name>Rusteal` and `<Name>RustealEditor`, every `Rusteal` in names and code becoming `<Name>Rusteal`; the copy looks up the Rusteal types Rust asks for under those names, and the plugin's Rust library, unchanged, is prebuilt into `Source/ThirdParty/RustLibraries/<Platform>/`, without Rust sources.
@@ -335,6 +335,25 @@ Why Rusteal is the way it is. Each record gives the decision, the reasons, what 
 ### D37. A thunk's locals cannot collide with a function's parameters
 - **Decision.** The arguments a thunk reads are bound as `__rusteal_arg_<name>` (`0c498ae`).
 - **Why.** A parameter named `params` or `obj` shadowed the thunk's own buffer and object, and a `Main(const FString& Params)` override did not compile.
+
+### D38. The game's bindings read a plugin's Rust classes from its sources
+- **Decision.** `rusteal-codegen/src/plugin_bindings.rs` parses each runtime plugin's crate with `syn`, following `mod` declarations from `lib.rs` (which gives the `module_path!()` the macro hashes into the type id), and writes `bindings::plugins::<plugin>` into the game's bindings: a type per `#[uclass]` with `UeClass` (the original `RUST_TYPE_ID`, the class found by path each time), `HasParent` and `Inherits` from a type index the full generation writes to `Intermediate/Rusteal/bindings_types.json`, and an `<Class>Ext` trait whose properties go through `reflected::PropertySlot` and whose functions are `DynamicCall`s returning `RustealResult`. `rusteal build` refreshes it from the sources before building Rust. The naming rules moved to `rusteal-ue-flags`, shared by the macros and the generator (`15bb33e`, `d216a90`, `0b56455`).
+- **Why.** The UHT export cannot see classes created at runtime, and a game crate depending on the plugin crate would link a second copy of its classes and of `rusteal-core`, whose Rust data lives in the plugin's copy. The engine's reflection is what both libraries share.
+- **Rejected.** A shared `rusteal-core` library for every Rust library (a much larger change to the library model); an export from the compiled plugin (the pipeline would build the plugin before generating the game's bindings).
+- **Implies.** The game does not see Rust-only fields, the plugin's structs, enums and delegates, or items the parser does not follow (`#[path]` modules, other macros).
+
+### D39. A class whose parent is in another library waits for that library
+- **Decision.** `register_module` sets apart the classes whose parent is a Rust class of another library (a non-zero type id that is not the module's), and those that depend on one of them through `depends_on` (parent, components, property classes, which the macro now lists); they are created, in dependency order, as soon as their parent exists: at once when it does, or when `retry_deferred_classes`, called in every library after each one registers, finds it. What still waits after `OnPostEngineInit` is an error (`9782178`, `393465a`, `12ff628`).
+- **Why.** The game's library registers first, in the Rusteal module's startup, and the plugins' in their modules' after it; reordering every library would change when every game class exists, for every project.
+
+### D40. A reload reloads the libraries whose classes derived from a changed class, in one reinstancing
+- **Decision.** After a library loads again, `ReloadLibrary` looks for live reified classes with a retired class in their chain, and reloads their libraries before reinstancing, so the engine reinstances parents and children together (`f9eb95d`).
+- **Why.** Reinstanced alone, the child kept the retired parent, whose functions point at the unloaded library, and the editor recompiled its stub Blueprint as a child of the replaced class and asserted.
+- **Lesson.** On Linux the hot copy was a hard link; a library reloaded unchanged (the game, in that chain) linked the same inode as the instance still mapped, and `dlopen` handed back that instance with its old statics. The copy is real when the source is the file loaded last.
+
+### D41. A call into a function whose library is gone is reported
+- **Decision.** `execCallRustFunction` warns when the function's library is no longer loaded, instead of returning without a word (`ac046fc`).
+- **Lesson.** In an editor world, `ProcessEvent` on an actor is absorbed for functions that are not `CallInEditor`: a test of Rust calls in the editor uses a `UObject`.
 
 ## CLI
 
