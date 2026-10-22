@@ -388,6 +388,33 @@ Why Rusteal is the way it is. Each record gives the decision, the reasons, what 
 - **Decision.** In `execCallRustFunction`, when `ProcessEvent` called the function, non-const out parameters and the return value go back to the caller's memory with a bitwise move, and const references do not go back at all; a call from the Blueprint VM still copies (`54c3f38`).
 - **Why.** `ProcessEvent` builds the frame with a `Memcpy` of the caller's parameters and never destroys out parameters: the frame's copy of a struct shares its heap data with the caller's, and copying it back with `operator=` destroyed what both pointed at. `FGameplayEffectSpec`, passed by const reference to `PostGameplayEffectExecute`, crashed the game.
 
+### D50. The network harness runs a dedicated server and two clients in one editor, without a window
+- **Decision.** `cargo xtask engine-test` starts an editor with `-nullrhi`, writes the Play In Editor settings by reflection (`rusteal_tests.net_configure_pie`: Play As Client, one process, two players) and requests a session from Python; a Rust world subsystem in each PIE world runs the checks, which share their state through statics since every world lives in the same process, and a Slate post-tick callback quits once the results are written. The checks run three times: by default, with push model, and with Iris (`4d486b4`, `35a66bb`).
+- **Why.** One editor at a time and no window on the maintainer's desktop; three processes connecting through sockets would be two more editors.
+- **Lesson.** `QUIT_EDITOR` from a PIE world's tick ends play inside that tick and asserts; the Iris plugin, `-UseIrisReplication=1` and `net.SubObjects.DefaultUseSubObjectReplicationList` from the command line (not `ExecCmds`, which runs after the map's actors exist) are what turn Iris on.
+
+### D51. Rust properties replicate through the Blueprint path
+- **Decision.** `reify_set_property_replication` sets `CPF_Net`, `CPF_RepNotify`, `RepNotifyFunc` and the property's Blueprint replication condition; finalizing the class counts `NumReplicatedProperties`, which `GetLifetimeBlueprintReplicationList` walks for actors and components. The generated setters of replicated properties, and the accessors of replicated containers, mark the property dirty for push model (`6596c4a`, `116c0ee`, `ccc55a8`).
+- **Why.** Reified classes are `UBlueprintGeneratedClass`es: the engine already replicates their properties when they carry the flags a Blueprint compiler sets.
+
+### D52. A remote function's method asks the engine; its body is the implementation
+- **Decision.** `#[ufunction(Server | Client | NetMulticast, Reliable | Unreliable)]` registers a native net function; the macro renames the body to `<name>_implementation`, which the thunk calls, and replaces the method with a `&self` dispatcher that calls the function through `ProcessEvent`, as UHT's `Foo` and `Foo_Implementation`. `WithValidation = f` calls `f` with clones of the parameters in the thunk and reports a refusal with `RPC_ValidateFailed` (`d05f4c7`, `39d98e3`).
+- **Why.** Only `ProcessEvent` routes a call by the function's flags and the object's role; a direct call of the body would run it on the caller's machine.
+- **Implies.** Reliable or Unreliable is required, as UHT requires it. Under Iris a refused call is dropped without closing the connection, as for C++.
+
+### D53. Engine remote functions are bound where the engine exports them
+- **Decision.** The exporter keeps `Server` functions and drops a net function unless it is `RequiredAPI` or its class is (`3822894`).
+- **Why.** UHT defines a remote function's caller in the module's generated code without the API macro of a `MinimalAPI` class, so the wrapper did not link (`ANoPawnPlayerController`). Binding them also showed that unsigned and 16-bit parameters never compiled: they were passed without a cast to their FFI type (`fccfbe1`).
+
+### D54. Replicated subobjects derive from a C++ base
+- **Decision.** `URustealReplicatedObject` (`REPLICATED_BASE_CLASS`, `IsSupportedForNetworking`, the Blueprint replication list, remote functions forwarded to the outer actor's net driver); `net::add_replicated_subobject` sets the actor's `bReplicateUsingRegisteredSubObjectList` by reflection and registers the object (`9fae020`).
+- **Why.** A plain `UObject` neither replicates nor reports its replicated properties, and push model needs the id storage the macro adds; the actor's flag is protected.
+
+### D55. `rusteal package --server` refuses an installed engine
+- **Decision.** `--server` writes `Source/<Project>Server.Target.cs` when missing and adds `-server -noclient -serverplatform -serverconfig` to `BuildCookRun`; an engine with `Engine/Build/InstalledBuild.txt` is refused before anything builds (`09b226b`).
+- **Why.** Installed engines have no server target; the failure would come at the end of a long build.
+- **Implies.** Not validated yet: it needs an engine built from source.
+
 ## CLI
 
 ### E1. The CLI is also a Cargo subcommand
