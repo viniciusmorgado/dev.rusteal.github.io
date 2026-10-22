@@ -73,6 +73,7 @@ It builds this checkout's CLI, creates `target/engine-test/RustealTests` with `-
 The project also has a Rust plugin, `RustealProbe`, made by `rusteal plugin new` and filled from `tests/engine/plugin/src`, for the checks of one library using another's classes. After the game, two more runs join the results:
 
 - a Rust commandlet, `-run=VirtualsCommandlet`, whose exit code is checked;
+- the plugin's editor library, `RustealProbeEditor` (from `tests/engine/plugin/editor/src`), whose `rusteal_editor_tests.run` and the Python scripts next to it (`py <file>`) check editor subsystems, utility objects, factories, Slate, the details panel and what editor Python reaches, in the same editor run as the reload;
 - an editor with no window that hot reloads the plugin: `rusteal_tests.reload_prepare` creates a game class whose parent is the plugin's and replaces the plugin's library with a build of `tests/engine/plugin/reload/` (a changed class), `Rusteal.Reload RustealProbe` reloads it, and `rusteal_tests.reload_verify` checks the game's class was rebuilt on the new parent. Its objects are `UObject`s, since the editor's world absorbs actors' `ProcessEvent`.
 
 ```bash

@@ -355,6 +355,23 @@ Why Rusteal is the way it is. Each record gives the decision, the reasons, what 
 - **Decision.** `execCallRustFunction` warns when the function's library is no longer loaded, instead of returning without a word (`ac046fc`).
 - **Lesson.** In an editor world, `ProcessEvent` on an actor is absorbed for functions that are not `CallInEditor`: a test of Rust calls in the editor uses a `UObject`.
 
+### D42. Slate is built from Rust through a registry of widgets
+- **Decision.** `RustealSlateApiImpl.cpp` creates a widget of a kind from a `RustealSlateProps` (texts, callback ids, numbers) and keeps its `TSharedRef<SWidget>` under an id; `add_child` places one in another's slot; `slate::Widget` releases its id when dropped, so a widget lives as long as its parent or tab holds it. Attributes and events are lambdas holding a shared callback that releases the Rust closure with the widget, as timers do (D25); a text attribute's closure writes its string through `slate_write_text`. Nomad tabs call a Rust builder that hands its widget over. A library's tabs close and its closures go inert when it unloads (`bb49534`, `9c862f9`).
+- **Why.** Slate is C++ templates (`SNew`, `FArguments`), which the reflection does not see and code generation cannot bind; a few common widgets cover editor tools' panels, and each new one is a case of the switch.
+- **Rejected.** UMG from Rust for editor UI (a Widget Blueprint per tool); exposing `SNew` generically (every argument is a template).
+
+### D43. The details panel's functions are in the runtime module, in editor builds only
+- **Decision.** The Details API lives in `RustealDetailsApiImpl.cpp` of the Rusteal module, which depends on `PropertyEditor` when the target builds the editor; game builds have stubs that fail with "in the editor only". An `IDetailCustomization` calls the Rust builder with an id for its `IDetailLayoutBuilder`, valid while it runs; `details::view` adopts an `IDetailsView` as a Slate widget (`c8dee27`, `c87f07e`).
+- **Why.** The API table, the widget registry and the calls into the right library are the runtime module's; a second table filled by the editor module would duplicate them.
+
+### D44. A factory creates the object, and Rust fills it
+- **Decision.** `URustealFactory` (RustealEditor) creates the new object in `FactoryCreateNew` and `FactoryCreateFile`, with the outer, name and flags the editor passes, then raises `ReceiveCreatedNew` or `ReceiveImportFile` (`e7d1beb`).
+- **Why.** `EObjectFlags` and `FFeedbackContext*` are not reflected, so the generated bases (D31) cannot pass them to an event, and creating the object is the same for every factory.
+
+### D45. The harness's plugin has an editor library, checked in an editor without a window
+- **Decision.** `RustealProbe` gets `RustealProbeEditor` (`rusteal plugin editor`), filled from `tests/engine/plugin/editor/src`; its console command `rusteal_editor_tests.run`, and Python scripts run with `py`, append their results in the same editor run as the reload (`b76902f`, `44cf39c`, `43a2e94`).
+- **Lesson.** Editor Python reaches a Rust class's properties by either name and its functions by `call_method` with the Unreal name only, as for Blueprint classes: the check holds that.
+
 ## CLI
 
 ### E1. The CLI is also a Cargo subcommand
