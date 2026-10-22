@@ -415,6 +415,29 @@ Why Rusteal is the way it is. Each record gives the decision, the reasons, what 
 - **Why.** Installed engines have no server target; the failure would come at the end of a long build.
 - **Implies.** Not validated yet: it needs an engine built from source.
 
+### D56. Rust profiling goes through the engine's profilers, with names registered once
+- **Decision.** `trace_scope!` caches the CPU event type of `FCpuProfilerTrace::OutputEventType` per call site and opens and closes `OutputBeginEvent`/`OutputEndEvent` in a guard; `stat_scope!` caches a dynamic stat of a `Rusteal` group and keeps a heap `FScopeCycleCounter` while it runs; `profiling::memory_tag` keeps a heap `FLLMScope`. The guards are not `Send`. The harness records the game with `-trace=cpu` and exports the scope's events with Unreal Insights `-NoUI -AutoQuit` (`afe7798`, `b904052`).
+- **Why.** Insights, `stat` and LLM are where Unreal developers look; a Rust profiler of its own would not show beside the engine's events.
+
+### D57. Rust automation tests are dynamic `FAutomationTestBase`s
+- **Decision.** `automation::register_test` makes an `FRustealAutomationTest` per name, owned per library and dropped by `ForgetLibrary`, whose `RunTest` calls the Rust closure; `add_error` reaches the running test through `FAutomationTestFramework::GetCurrentTest` (`18f47c4`, `db3e685`).
+- **Why.** The Session Frontend, `Automation RunTests` and the JSON report then treat them as C++ tests, which is what build machines already run.
+
+### D58. `loctext!` reaches the gather through a generated header
+- **Decision.** `rusteal build` reads the `loctext!` calls of the game's and the runtime plugins' crates (a token scan, so calls inside other macros count) and writes them as `NSLOCTEXT` lines to `Source/<Project>/RustealText.h`, which nothing includes; the macro takes literals only (`9433106`, `06338db`).
+- **Why.** `GatherTextFromSource` reads C++ by its macros; teaching it Rust would mean an engine plugin, while a header in `Source` is gathered by the default configuration.
+- **Implies.** A plugin packaged on its own carries no gathered text of its Rust: its project gathers it.
+
+### D59. Debugger configurations hold no machine paths
+- **Decision.** The `vscode` feature attaches CodeLLDB (or the Visual Studio debugger) to the running editor and starts it through `cargo rusteal watch`, instead of launching the editor binary (`c71aeba`).
+- **Why.** E6: the engine path is per machine. Packaged symbols come from Cargo's `CARGO_PROFILE_RELEASE_DEBUG`, which needs no option of Rusteal.
+- **Implies.** No debugger is installed on the maintainer's Linux machine, so no breakpoint is checked automatically yet.
+
+### D60. No zero-copy views of engine arrays in safe code
+- **Decision.** `UeArray` keeps copies (`to_vec`, `set_all`, `bulk_iter`, one `memcpy` on the engine side) and no slice over the `TArray`'s memory; the harness measures the costs, which the gamedev handbook publishes (`74ecbc6`).
+- **Why.** Any engine call made while a slice lives could reallocate the array, and game code is safe Rust (I7).
+- **Lesson.** The bulk copy of `i32` costs about 4.6 ns per element each way, spent converting element by element on the Rust side: a `memcpy` there is a later optimization.
+
 ## CLI
 
 ### E1. The CLI is also a Cargo subcommand
