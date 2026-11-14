@@ -133,8 +133,12 @@ The engine owns the object; Rust owns its data. `FRustealDeleteListener::NotifyU
 
 | Type | What it is | Contract |
 |---|---|---|
-| `UObjectRef<T>` | `#[repr(transparent)]` over `UObjectHandle` | `Copy`, no ownership, no GC root; `is_valid()` is `::IsValid`; `checked()` before use; `cast()` checks `IsA`, `upcast` is checked at compile time. The `Deref` chain casts pointers, so the layout must stay transparent. |
-| `TWeakObjectPtr<T>` | An `FWeakObjectPtr`'s bytes | `get()` is `None` once the object is gone. |
-| `SoftObjectRef<T>` | A path | `get()` finds a loaded object; `load_synchronous()` loads it. |
-| `SubclassOf<T>` | `#[repr(transparent)]` over `UClassHandle` | `base()` is `T::static_class()`. |
-| `Pinned<T>` | A GC root (`AddToRoot`) | Not reference counted: dropping one of two `Pinned` of the same object unroots it. Pins are released when their library unloads. |
+| `UObjectRef<'a, T>` | An `FWeakObjectHandle` (index and serial number) | `Copy`, covariant in `'a`, not `Send`; no ownership. `'a` is the call that gave it; it cannot be kept in a field, a static, a `'static` closure or a task. `is_valid()` and `checked()` resolve it exactly; `cast()` checks `IsA`, `upcast` is checked at compile time. |
+| `Checked<'a, T>` | The resolved pointer | What generated `<Class>Ext<'a>` traits are implemented on; `checked()` does not borrow the `UObjectRef`, so `x.checked()?.get_owner()` returns a `UObjectRef<'a, _>`. |
+| `RustRef<'a, T>` | A guard over a `#[uclass]`'s Rust data | What `from_obj` returns; `Deref`/`DerefMut`, `map` to type-erase it. |
+| `GameThread` | A zero-sized token, not `Send` | `GameThread::current()`; the lifetime anchor of functions with no object parameter (`find_object`, `load_object`, `new_object_transient`). |
+| `TWeakObjectPtr<T>` | An `FWeakObjectPtr`'s bytes | `'static`, `Copy`, `Send`, `Sync`; `get()` is `None` once the object is gone. What closures, tasks, Rust-only fields and `next()` carry. |
+| `SoftObjectRef<T>` | A path | `get()` finds a loaded object, borrowing the soft reference; `load_synchronous()` loads it; `load_async()` gives a `TWeakObjectPtr`. |
+| `SubclassOf<T>` | `#[repr(transparent)]` over `UClassHandle` | `base()` is `T::static_class()`. No lifetime: classes are kept in properties and statics. Not `Send`. |
+| `Pinned<T>` | A slot of `FRustealReferenceCollector` and a weak handle | Each `Pinned`, and each clone, keeps the object on its own; a destroyed object reads as gone. Pins are released when their library unloads. Not `Send`. |
+| `OwnedStruct<T>` | The struct's memory, tracked by `FRustealReferenceCollector` | The collector reports its object members to the GC while it exists. Not `Send`. |

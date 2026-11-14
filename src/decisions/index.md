@@ -438,6 +438,38 @@ Why Rusteal is the way it is. Each record gives the decision, the reasons, what 
 - **Why.** Any engine call made while a slice lives could reallocate the array, and game code is safe Rust (I7).
 - **Lesson.** The bulk copy of `i32` costs about 4.6 ns per element each way, spent converting element by element on the Rust side: a `memcpy` there is a later optimization.
 
+### D61. Object references are the engine's index and serial number
+- **Decision.** `UObjectRef`, `TWeakObjectPtr`, `Pinned`, method and delegate owners, `NativeEvent` and executor tasks keep an `FWeakObjectHandle` (`{object_index, object_serial_number}`, the bytes of an `FWeakObjectPtr`), never an address, and resolve it through `FWeakObjectPtr::Get` when used. Contract tests assert the handle's size and alignment against `FWeakObjectPtr` (`b479aeb`).
+- **Why.** `::IsValid` on a raw pointer reads freed memory once the object is collected, and the engine reuses addresses: a method bound to a destroyed actor ran on the next actor allocated there. The serial number changes whenever a slot of `GUObjectArray` is reused.
+- **Implies.** One resolution per `checked()`. Wrappers still return pointers, made weak on the Rust side with one more call.
+
+### D62. `#[uclass]` refuses object references outside `#[uproperty]`
+- **Decision.** A Rust-only field whose type names `UObjectRef`, `Checked` or `ScriptInterface`, at any depth, is a compile error that names the three ways to keep an object: `#[uproperty]`, `TWeakObjectPtr`, `Pinned` (`56414b8`).
+- **Why.** The garbage collector sees properties only; a private reference silently stops keeping its object. The templates had ten such fields.
+- **Rejected.** Reporting private fields to the collector: it needs a schema of Rust types the engine cannot read, and hides the choice between owning and observing that C++ makes with `UPROPERTY` and `TWeakObjectPtr`.
+
+### D63. Object references stay on the game thread; debug builds check every engine call
+- **Decision.** Object references and `UObjectHandle` are not `Send`; game-thread callbacks are not required to be `Send` and live in `GameThreadOnly` cells. `rusteal-core/build.rs` gives every `ffi_dispatch` wrapper a thread rule, asserted under `debug_assertions`; a `#[ufunction(ThreadSafe)]` call opens a thread-safe scope for property, container and struct access (`6318409`).
+- **Why.** The engine's objects are not thread-safe and C++ only finds a race at run time. One rule at the dispatch catches every caller, including generated bindings, with a cached thread-local check.
+- **Implies.** `TWeakObjectPtr` is the way to carry an object to a worker and back. Release builds trust the types.
+
+### D64. A `UObjectRef` lives as long as the call that gave it
+- **Decision.** `UObjectRef<'a, T>`, `Checked<'a, T>` and `ScriptInterface<'a, I>` carry the lifetime of the engine call that handed them out. `checked()` returns `Checked<'a>` without borrowing; generated traits are `<Class>Ext<'a>` on `Checked<'a, Class>` and return objects with the same `'a`; static functions without an object parameter take `&'a GameThread`. `from_obj` returns a `RustRef<'a, T>` guard; setters take `&self`; delegates gain `add_method`/`bind_method`, which find their object again on each call; `next()`, `NativeEvent` and `async` functions use `TWeakObjectPtr` (`74ef3ef`).
+- **Why.** With D61 a stale reference is a clean error, but nothing stopped one from being kept where the collector cannot see it (a closure, a task, a static). The lifetime makes that a compile error, which is the point of using Rust over C++.
+- **Rejected.** `'static` references with run-time checks only: memory-safe, but they keep the C++ habit of storing pointers the collector ignores.
+- **Implies.** A `'static` reference needs a deliberate escape (`Box::leak` of a `GameThread`, `unsafe from_handle`). `SubclassOf` has no lifetime: classes are kept in statics and properties, and an unloaded class still resolves to an error.
+
+### D65. Pins and owned structs are references of one `FGCObject`
+- **Decision.** `FRustealReferenceCollector` keeps a slot per `Pinned` (a `TObjectPtr` and its library) and the memory of each `OwnedStruct` whose struct has object members, and reports them in `AddReferencedObjects` (`AddPropertyReferencesWithStructARO` for structs). The lifecycle table is `pin`, `unpin`, `track_struct`, `untrack_struct`; `notify_pinned_destroyed` is gone (`175a9cb`).
+- **Why.** `AddToRoot` is one flag per object: two `Pinned` shared it, and dropping one could unroot an object the engine rooted itself. A struct held in Rust memory was invisible to the collector.
+- **Implies.** An object destroyed explicitly is collected even while pinned; the `Pinned` reads it as gone through D61. Slots are freed when their library unloads.
+
+### D66. `shared-std` gives way to an engine's own Rust personality
+- **Decision.** `rusteal package --static --feature shared-std` takes `rust_eh_personality` out of the way in the installed static library, by changing one field of its symbol entries in place (`rusteal-cli/src/shared_std.rs`): on ELF (Linux, Android) the binding becomes weak; on Mach-O (macOS, iOS, each architecture of a universal library) the definition gets `N_WEAK_DEF`; on COFF (Windows, bigobj included) the storage class becomes static. Off by default.
+- **Why.** Fat LTO compiles std into the static library's one object and hides it, but the unwinding personality stays global. A fork of the engine that links its own Rust static library (`unreal-sys`) defines it too, and the game's link fails with a duplicate symbol. Sharing the engine's whole std would need its exact toolchain and its panic strategy (`panic = "abort"`), and would collide on the allocator shims; the personality only reads the LSDA the compiler wrote, so either copy serves both halves, and each half's `panic_unwind` still checks that a panic is its own.
+- **Why COFF differs.** COFF has no weak definitions, and the linker reports a COMDAT next to a plain definition as a duplicate; a static symbol keeps the object's own references and leaves the name to the engine. On Windows Rust unwinds through `__CxxFrameHandler3`, and `rust_eh_personality` is a stub that is never called, so each half keeping its own is harmless.
+- **Implies.** The engine from Epic links no Rust and needs nothing. The change was checked with LLD on real libraries for Linux x64, Android arm64, macOS x64 and arm64, iOS arm64 and Windows x64 and arm64: each fails with a duplicate symbol before and links after; the packaged game runs on Linux with the fork. The editor is unaffected: each library is a `cdylib` that exports only its own symbols.
+
 ## CLI
 
 ### E1. The CLI is also a Cargo subcommand

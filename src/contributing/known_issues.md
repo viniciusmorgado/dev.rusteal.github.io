@@ -7,15 +7,20 @@ Things that work as written but surprise. Each is a candidate for a fix; until t
 - **Function pointer order is not tested.** The contract tests check struct sizes and offsets, not the order or signatures of the table's function pointers. A field added on one side only, or in a different position, compiles and calls the wrong function. A field appended to a C++ sub-table but missing from its positional initializer is a null pointer.
 - **The API table has no fingerprint of its own.** A library checks the version and its bindings' fingerprint; changing the API table without changing the version (any work between releases) is not detected: rebuild the plugin and the library together.
 - **Plugins made before 0.9 register without a fingerprint** (`RustealRegisterPluginLibrary`): their library checks the function count only. Switching the module to `RustealRegisterPluginLibraryChecked`, as the templates do, turns the check on.
-- **The game thread is a convention.** No API entry point asserts it; `GCurrentLibrary` is not thread-local. Engine calls from a background thread are undefined; use `task::spawn` and `run_on_game_thread`.
-- **Validity checks differ by entry point.** Property and container functions only check for null; generated wrappers check `IsValid` only in Debug and Development. Rust callers must `checked()` first.
-- **No `FWeakObjectPtr` size assert** on the C++ side, though weak pointers are copied as 8 bytes.
+- **Validity checks differ by entry point.** Property and container functions only check for null; generated wrappers check `IsValid` only in Debug and Development. Rust resolves a reference's index and serial number first; code that calls `ffi_dispatch` with a raw handle must too.
+- **The game-thread check is debug only.** Release builds trust the types; an `unsafe` path that sends a handle across threads is not caught there.
 
 ## Macros
 
 - **Unknown `#[uclass]` and `#[component]` arguments are ignored**, and attributes on a `#[uclass]` struct are dropped, where `#[uproperty]` and `#[ufunction]` reject unknown arguments.
-- **Private fields are invisible to the garbage collector.** A `UObjectRef` kept in a private field does not keep its object alive.
-- **`Pinned` is not reference counted.** Two `Pinned` of the same object share one root; dropping either unroots it.
+- **`#[uclass]` finds object references by type name.** A private field is refused when its type names `UObjectRef`, `Checked` or `ScriptInterface` at any depth; a type alias, or a struct of the user's that holds one, hides it. The lifetime still keeps such a struct out of the class, unless it is `'static` through an escape below.
+
+## Object lifetimes
+
+- **Deliberate escapes give a `'static` reference:** `Box::leak` of a `GameThread`, `unsafe UObjectRef::from_handle`. Memory stays safe (the index and serial number are checked), but the garbage collector does not see the reference.
+- **A reference can cross an `.await` inside one future** when it is borrowed from a `TWeakObjectPtr` the future owns. The next `checked()` after the await is an error if the object went away, so this is safe, but the compiler does not stop it.
+- **An object read through a temporary borrows it.** A component of a class reached with `from_obj`, an object field of a hit result, what a returned `TWeakObjectPtr` resolves to: each lives as long as the value it was read from, since the generated getters take `&self`. Code keeps the value in a `let` or calls `with_scope_of`; getters that return the reference's own lifetime would remove the step.
+- **C++ wrappers still return pointers.** Rust turns each into a weak handle with one more call (`core.make_weak`); returning the handle from the wrapper would save it.
 
 ## Idiomatic gaps (decision I7)
 
@@ -40,6 +45,7 @@ No game code needs `unsafe`. What is still less idiomatic than it could be:
 - **Plugins made before 0.9** stage their dynamic library anyway: their `Build.cs` adds it directly instead of through `Rusteal.AddRustLibrary`.
 - **The manifest binary is built for the host.** A registration behind a `cfg` of the target platform would differ between the host's list and the target's archive.
 - **The engine allocator is global.** A game that sets its own `#[global_allocator]` must turn it off (`[static] engine_allocator = false`).
+- **An engine fork that links Rust of its own** needs `--feature shared-std` (decision D66); a packaged game was validated on Linux with a fork whose `RustCore` links `unreal-sys`, and the other platforms by linking their libraries with LLD.
 
 ## Hot reload
 
