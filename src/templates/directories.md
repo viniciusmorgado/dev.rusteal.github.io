@@ -41,5 +41,9 @@ feature: `plugin` is the plugin's name in the project (its assets live under
 `/<plugin>/`, so a feature with `Content/` keeps that name), and
 `shared_packs` lists the engine template packs it needs
 (`High/Characters` is `Templates/TemplateResources/High/Characters`), copied
-into the project's `Content/` without replacing what is there. A template's
-`template.toml` bundles features with `features = [...]`.
+into the project's `Content/` without replacing what is there.
+`template_assets` lists the engine template assets its Blueprints use
+(`TP_UEIntro_BP/Content/DemoTemplate/Templates/M_BoxArt`), copied the same
+way to their path in the template: a plugin template ships its own Blueprints,
+never Epic's art. A template's `template.toml` bundles features with
+`features = [...]`.
