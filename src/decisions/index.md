@@ -672,6 +672,11 @@ Why Rusteal is the way it is. Each record gives the decision, the reasons, what 
 - **Decision.** Each `.cpp` and `.h` of `ue_launcher/` starts with `// Copyright <year> Vinicius Donatto Morgado.`
 - **Why.** Fab requires a copyright notice with the publisher's name in every source file; it is the one exception to the rule of no comments in the sources (I3).
 
+### I9. Formal verification only where tests cannot reach every input
+- **Decision.** [Verus](https://github.com/verus-lang/verus) proves the few pure-Rust parts that parse untrusted bytes or trust a length the engine reports, and nothing else. Those are `shared-std`'s rewriting of static libraries (`rusteal-cli/src/shared_std.rs`, ELF first) and then the container and string buffers in `rusteal-core`. The shipped crates never depend on Verus, and verification runs apart from the build and the CI checks ([Formal verification](../contributing/verification.md)).
+- **Why.** In these parts a mistake corrupts a binary or memory silently, and their inputs cannot be enumerated, so a proof covers what no test can. Verifying more was rejected: the risk in a binding layer sits mostly on the C++ side of the boundary, where Verus cannot see, and Rust's types already check object lifetimes and the game thread (D61–D65). Verus also pins its own Rust toolchain, changes every week and supports a subset of Rust, so each proof is a cost to keep up.
+- **Implies.** A part joins only when its mistakes cannot surface as a failing test, its inputs cannot be enumerated, and no engine is in the loop; adding one updates this record. The proven code is the shipped code, never a copy kept beside it. Game developers never need Verus (I7).
+
 ## Recording a decision
 
 Add a record here when a change:

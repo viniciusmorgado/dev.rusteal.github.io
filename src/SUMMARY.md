@@ -39,6 +39,7 @@
 
 - [Setting up a checkout](./contributing/environment.md)
 - [Testing a change](./contributing/testing.md)
+- [Formal verification](./contributing/verification.md)
 - [Common tasks](./contributing/tasks.md)
 - [The workspace](./contributing/workspace.md)
 - [Releases and versions](./contributing/releases.md)
