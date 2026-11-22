@@ -45,6 +45,13 @@ See [Code generation](../architecture/codegen.md).
 3. After a new source file or a changed `UCLASS`/`USTRUCT` header, run `cargo xtask dev-setup` again so clangd sees it.
 4. The published CLI embeds a snapshot of the plugin, written by `rusteal sync-plugin`; the release workflows run it, nothing to commit.
 
+## Add an engine virtual to Rusteal's bases
+
+1. Add the virtual's C++ declaration to its base, or a new `[[shim]]`, in `rusteal-codegen/shims/engine.toml`; a parameter a Blueprint event cannot take goes in `drop`.
+2. `cargo test -p rusteal-codegen --test shims -- --ignored regenerate_shims` rewrites `RustealShims.h` and `RustealShims.cpp`; `cargo test -p rusteal-codegen --test shims` fails until they are current.
+3. Override the event in a fixture of `tests/engine/src` and check it in `cargo xtask engine-test`.
+4. Add the row to the gamedev handbook's Engine virtuals page.
+
 ## Add a CLI command or flag
 
 1. The clap definition in `rusteal-cli/src/main.rs`, a module of its own for the work, the version check (`check_version`) if it acts on a project.

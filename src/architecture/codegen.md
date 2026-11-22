@@ -125,7 +125,7 @@ Written into the host module's `Generated/`:
 
 ## A plugin's library
 
-Same pipeline, with `[plugin]` instead of `[project]`, the project's JSON as input, `<Plugin>/Rust/bindings` and `<Plugin>/Source/<Plugin>/Generated` as output, and every C++ symbol prefixed with `<Plugin>_`. An editor library (`kind = "editor"`) binds `RustealEditor` and keeps the editor-only functions. A plugin has one library, runtime or editor, not both.
+Same pipeline, with `[plugin]` instead of `[project]`, the project's JSON as input, `<Plugin>/Rust/bindings` and `<Plugin>/Source/<Plugin>/Generated` as output, and every C++ symbol prefixed with `<Plugin>_`. An editor library (`kind = "editor"`) binds `RustealEditor` and keeps the editor-only functions. A runtime plugin may have an editor library too (`[editor]`, with its own `[editor.codegen]`): `PluginConfig::libraries` lists both, and each is generated on its own, into `<Plugin>/Rust/editor-bindings` and `<Plugin>/Source/<Plugin>Editor/Generated` with the prefix `<Plugin>Editor_` (`PluginLayout::library_output`).
 
 ## When something is missing or does not link
 

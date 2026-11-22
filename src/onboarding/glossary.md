@@ -21,7 +21,7 @@
 | **Module** | `rusteal_core::Module`: a library as the Rust runtime sees it, with its own ticks, tasks, closures and registrations; what keeps libraries apart when they share one runtime. |
 | **`manual/`** | Hand-written extensions codegen copies into every bindings crate, for what reflection cannot describe. |
 | **Pinned** | `Pinned<T>`: a GC root that keeps an object alive for Rust. |
-| **Plugin library** | A Rusteal plugin's own library, `librusteal_<Plugin>.so` (`.dylib` on macOS, `rusteal_<Plugin>.dll` on Windows), classes in `/Script/<Plugin>`. |
+| **Plugin library** | A Rusteal plugin's own library, `librusteal_<Plugin>.so` (`.dylib` on macOS, `rusteal_<Plugin>.dll` on Windows), classes in `/Script/<Plugin>`. A runtime plugin may have an editor library as well, `librusteal_<Plugin>Editor`, classes in `/Script/<Plugin>Editor`. |
 | **Reify / reified class** | Creating a Rust type as a real Unreal type at load time; `URustealReifiedClass` is the class behind a `#[uclass]`. |
 | **Reinstance** | Moving existing objects and Blueprints to a replaced class, with the engine's `FReload`. |
 | **Rust data** | An object's Rust-private fields, kept by the registry outside the object's memory. |

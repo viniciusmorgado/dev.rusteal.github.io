@@ -93,3 +93,4 @@ The levels are played headless (`UnrealEditor <project> -nullrhi -ExecCmds="py t
 | Handheld AR | `#[uproperty(BindWidgetAnim)]` and `Transient`. |
 | Handheld AR | Rust `bool` properties and parameters are native bools: they were one-bit fields, and a `false` written by Python or a Blueprint left the byte's other bits, which Rust read as `true`. |
 | Intro To Unreal | Features: plugin templates with a `[feature]` table, `rusteal new --feature`, templates bundling features, plugin templates carrying content. |
+| Intro To Unreal | Features take the template's art (materials, meshes, textures, effects, sounds) from the installed engine, listed as `template_assets`, instead of shipping copies of it. |

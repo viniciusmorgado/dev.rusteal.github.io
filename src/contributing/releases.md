@@ -40,6 +40,8 @@ slip through.
 - Before `build`, `generate` and `setup`, the CLI compares the project's pins
   and plugins with its own version (see [Versions and upgrades](https://viniciusmorgado.github.io/game.rusteal.github.io/getting_started/versions.html)).
 
+The launcher (`ue_launcher/RustealLauncher`) is the exception: it keeps its own version, which the release does not touch, and reaches Fab through a submission of its own (decision H11). Its sources still ship inside the CLI crate (`ue_launcher_embed/`, written by `rusteal sync-plugin`), but the "anything to release?" check looks at `rusteal-*`, `ue_plugin` and `Cargo.toml` only: a change to `ue_launcher/` alone does not start a release, and reaches crates.io with the next one.
+
 `Cargo.lock` is not versioned: every build would rewrite the internal versions
 in it. A dependency release that breaks the workspace shows up in CI, where it
 gets fixed. `cargo install rusteal --locked` still works, because cargo packs a

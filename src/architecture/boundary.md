@@ -12,7 +12,7 @@ The `Rusteal` module is a `Runtime` module with the `Default` loading phase (`Ru
 4. **`RustealFillFuncTable()`**, from the generated `RustealFillFuncTable.cpp`: the engine functions' table (below);
 5. registers the game's library: the project's name, the package `/Script/Rusteal`, the file `<ProjectPluginsDir>/Rusteal/Binaries/<Platform>/<prefix>rusteal.<ext>` (`librusteal.so`, `librusteal.dylib`, `rusteal.dll`). `RustealLibraryFileName` names it: the prefix is `lib` on every platform but Windows, the names `rusteal build` deploys and `Rusteal.Build.cs` stages, and the extension the engine's `GetModuleExtension()`. It does not use `FPlatformProcess::GetModulePrefix()`: only the Unix platform overrides it with `lib`, it is empty on Mac, and the plugin looked for `rusteal.dylib` there.
 
-A Rusteal plugin's own C++ module (from the plugin templates' `{{plugin}}Module.cpp.tera`) calls `<Plugin>_RustealFillFuncTable()` and `RustealRegisterPluginLibraryChecked("<Plugin>", <Plugin>_RustealGetFuncTable(), <Plugin>_RustealGetFuncCount(), <Plugin>_RustealGetFuncFingerprint())` when it starts (plugins made before 0.9 call `RustealRegisterPluginLibrary`, without the fingerprint, which still works), and `RustealUnregisterLibrary` when it stops: its library is `<Plugin>/Binaries/<Platform>/librusteal_<Plugin>.<ext>`, its package `/Script/<Plugin>`. The game's library loads first, each plugin's when its module starts.
+A Rusteal plugin's own C++ module (from the plugin templates' `{{plugin}}Module.cpp.tera`) calls `<Plugin>_RustealFillFuncTable()` and `RustealRegisterPluginLibraryChecked("<Plugin>", <Plugin>_RustealGetFuncTable(), <Plugin>_RustealGetFuncCount(), <Plugin>_RustealGetFuncFingerprint())` when it starts (plugins made before 0.9 call `RustealRegisterPluginLibrary`, without the fingerprint, which still works), and `RustealUnregisterLibrary` when it stops: its library is `<Plugin>/Binaries/<Platform>/librusteal_<Plugin>.<ext>`, its package `/Script/<Plugin>`. A plugin's editor library has a module of its own, `<Plugin>Editor`, which calls `RustealRegisterPluginModuleLibraryChecked("<Plugin>", "<Plugin>Editor", ...)`: the plugin is found by its name, the library is `librusteal_<Plugin>Editor.<ext>` and its package `/Script/<Plugin>Editor`. The game's library loads first, each plugin's when its module starts.
 
 **`RegisterLibrary`** refuses a name already loaded, makes or reuses the `FRustealLibrary` entry (heap-allocated, so its address is stable), deletes stale `_hot_` copies, **copies `GApiTable` into the library's own `Table`** and sets that copy's `func_table`, `func_count` and `func_fingerprint`, loads the library, and broadcasts `RustealOnLibraryRegistered`.
 
@@ -41,7 +41,7 @@ On the Rust side, `rusteal_runtime::entry!()` (short for `entry!(bindings)`, the
 
 ## The current library (`Private/RustealLibrary.h`)
 
-`FRustealLibrary` holds a library's name, package, file paths, reload count, handle, callbacks and its own `FRustealApiTable`. The **current library** is a plain static (`GCurrentLibrary`), set by the RAII `FRustealLibraryScope`. Every call from C++ into Rust goes through `RustealCallLibrary(Library, Fn)`, which skips an unloaded library and sets the scope: tick, construct, drop, invoke a function, a delegate, a console command, a pinned notification.
+`FRustealLibrary` holds a library's name, package, file paths, reload count, handle, callbacks and its own `FRustealApiTable`. The **current library** is a plain static (`GCurrentLibrary`), set by the RAII `FRustealLibraryScope`. Every call from C++ into Rust goes through `RustealCallLibrary(Library, Fn)`, which skips an unloaded library and sets the scope: tick, construct, drop, invoke a function, a delegate, a console command.
 
 The API implementations Rust calls read `RustealCurrentLibrary()` to tag what they create with its owner: reified classes and functions, delegate proxies, console commands, pinned objects. Later, a call into one of those goes back to the library stored on it.
 
@@ -55,7 +55,7 @@ Two hand-written mirrors, field by field in the same order: `rusteal-ffi/src/api
 |---|---|
 | `core` | Validity, name, class, `IsA`, outer, `FName`, weak pointers, `take_error_message`, `is_child_of` |
 | `logging` | `log(level, utf8)`, `report(RustealErrorReport*)` |
-| `lifecycle` | GC roots, pinned objects |
+| `lifecycle` | `pin`/`unpin` and `track_struct`/`untrack_struct`: what Rust keeps, reported to the garbage collector by `FRustealReferenceCollector` (below) |
 | `property` | Typed get and set (bool, integers, floats, string, name, object, enum, struct), soft object paths |
 | `reflection` | Finding classes, properties, structs, functions and enums; parameter buffers and `call_function`; offsets and sizes; struct init, destroy and copy; delegate signatures |
 | `container` | `TArray`, `TMap`, `TSet` operations and bulk copies |
@@ -71,7 +71,7 @@ Each C++ sub-table is a global filled by **positional** aggregate initialization
 
 **`rusteal-core/build.rs`** copies `rusteal-ffi/src/api_table.rs` into `rusteal-core/api_table.rs` (gitignored, packaged with the crate, since a published crate cannot read `../rusteal-ffi`), parses it with `syn`, and writes `$OUT_DIR/ffi_dispatch.rs`: one `#[inline(always)] pub unsafe fn <table>_<field>(...)` per function pointer of every `Rusteal<Name>Api` struct, calling `((*crate::api::api().<table>).<field>)(...)`, plus `NativePtr` and unaligned `native_mem_read`/`native_mem_write`. Raw byte pointers become `NativePtr`; pointers to other `#[repr(C)]` structs named `Rusteal*`, `F*` or `U*` are written fully qualified (`*const rusteal_ffi::RustealReifyPropExtra`). A parameter of a type it does not know makes the generated wrapper fail to compile.
 
-**Contract tests** check layouts at compile time: `rusteal-ffi/src/contract_tests.rs` (`const` asserts, always compiled, so `cargo build` fails) and `Private/RustealContractTests.cpp` (`static_assert`s): handles are 8 bytes, `RustealErrorCode` 4, `RustealReifyPropExtra` 40, `RustealConsoleArgs` 24, `RustealErrorReport` 72, `RustealApiTable` 136, `RustealModuleExports` 32, `RustealStaticModule` 24, with their field offsets. They do **not** check the order or the signatures of the function pointers: that is on the person changing the table.
+**Contract tests** check layouts at compile time: `rusteal-ffi/src/contract_tests.rs` (`const` asserts, always compiled, so `cargo build` fails) and `Private/RustealContractTests.cpp` (`static_assert`s): handles are 8 bytes, `RustealFWeakObjectHandle` the size and alignment of an `FWeakObjectPtr`, `RustealErrorCode` 4, `RustealReifyPropExtra` 40, `RustealConsoleArgs` 24, `RustealErrorReport` 72, `RustealApiTable` 136, `RustealModuleExports` 32, `RustealStaticModule` 24, with their field offsets. They do **not** check the order or the signatures of the function pointers: that is on the person changing the table.
 
 ### Adding an API function
 
@@ -94,7 +94,6 @@ Each C++ sub-table is a global filled by **positional** aggregate initialization
 | `invoke_rust_function(callback_id, obj, params)` | `URustealReifiedFunction::execCallRustFunction`. |
 | `invoke_delegate_callback(callback_id, params)` | `URustealDelegateProxy::ProcessEvent`, and console commands (with `RustealConsoleArgs`). |
 | `on_shutdown()` | `UnloadLibrary`: waits for background tasks, clears the registries. |
-| `notify_pinned_destroyed(obj)` | The pinned objects' delete listener. |
 | `on_tick(dt)` | The core ticker, every frame, for every library: runs the queued game-thread jobs and tick hooks. |
 
 ## The engine functions' table
@@ -105,7 +104,7 @@ Codegen gives every bound engine function an id: `build_func_table` (`rusteal-co
 - **The table**, `RustealFillFuncTable.cpp`, fills `GRustealFuncTable[FUNC_COUNT]` by id; `RegisterLibrary` puts it in the library's table, with `FUNC_COUNT` and `FUNC_FINGERPRINT`.
 - **The fingerprint**: codegen hashes every entry of the table (id, module, class, function, flags, and each parameter's name, type, flags and class, struct, enum or interface), and writes the same value to `RustealFuncIds.h` (`FUNC_FINGERPRINT`, returned by `<prefix>RustealGetFuncFingerprint()`) and to the bindings' `func_ids.rs` (`FINGERPRINT`).
 - **The binding**: each bindings crate owns its table, `pub static __RUSTEAL_FUNCS: rusteal_core::FuncTable` in its `lib.rs`, created with its `FUNC_COUNT` and `FINGERPRINT`. `init` binds it to the library's table: the counts must be equal, and the fingerprints too when the plugin gave one (zero means an old plugin module that did not); otherwise the library is refused with a message asking for `rusteal build --all`.
-- **The call**, in the generated binding method: `const FN_ID: u32 = <id>`, `crate::__RUSTEAL_FUNCS.get(FN_ID)` (which panics past the table's end or before it is bound) transmuted to the wrapper's `extern "C"` type, called, its code checked with `ffi_infallible` (a `debug_assert`). Instance methods live on a `<Class>Ext` trait implemented for `Checked<Class>` and `Pinned<Class>` only, so the object was checked before the call.
+- **The call**, in the generated binding method: `const FN_ID: u32 = <id>`, `crate::__RUSTEAL_FUNCS.get(FN_ID)` (which panics past the table's end or before it is bound) transmuted to the wrapper's `extern "C"` type, called, its code checked with `ffi_infallible` (a `debug_assert`). Instance methods live on a `<Class>Ext<'a>` trait implemented for `Checked<'a, Class>` only, so the object was resolved before the call, and the objects it returns carry the same `'a` (see [Object references](reification.md#object-references)). Static functions take `<'a>` for their object parameters and result; one with no object parameter that returns an object takes `_gt: &'a GameThread` first. In debug builds `FuncTable::get` asserts the game thread, or a `#[ufunction(ThreadSafe)]` scope.
 
 Ids are positions: they change whenever a bound function is added or removed anywhere. Since each bindings crate reads its own table, the ids of two libraries never mix, even in one runtime; and since the table is checked when the library starts, bindings and C++ wrappers from different code generation runs are refused instead of calling the wrong functions.
 
@@ -119,7 +118,7 @@ Ids are positions: they change whenever a bound function is added or removed any
 
 **Strings** cross as UTF-8 pointer plus `u32` length, never NUL-terminated. A string coming back is written into the caller's buffer, with the full length returned, so the caller can retry with a bigger one.
 
-**Validity.** `UObjectRef::is_valid` is `::IsValid` (not null, not garbage); `checked()` gives a `Checked<T>` or an `ObjectDestroyed` error. On the C++ side the property and container entry points only check for null, the delegate ones call `IsValid`, and the generated wrappers check only in Debug and Development: a Rust caller checks first.
+**Validity.** A `UObjectRef` holds an `FWeakObjectHandle`, never an address. `is_valid` and `checked()` resolve it through `core.resolve_weak` (`FWeakObjectPtr::Get`: the slot's serial number must match, and the object must not be garbage or unreachable), so a destroyed object is an `ObjectDestroyed` error, never freed memory, and a new object in the same slot of `GUObjectArray` is never taken for the old one. `checked()` gives a `Checked<T>` holding the resolved pointer, the only thing the C++ entry points receive. Raw pointers the engine hands back (results, properties, container elements) become weak handles at once (`weak_handle_of`). On the C++ side the property and container entry points only check for null, the delegate ones call `IsValid`, and the generated wrappers check only in Debug and Development: the Rust side resolves first.
 
 ## Panics (`rusteal-core/src/ffi_guard.rs`)
 
@@ -127,7 +126,13 @@ Ids are positions: they change whenever a bound function is added or removed any
 
 ## Threads
 
-Nothing on the C++ side asserts the game thread; `task::is_game_thread` asks the engine (`IsInGameThread`). Engine calls belong on the game thread by convention: Rust code runs there when the engine calls it (functions, events, ticks, delegates), and `task::spawn` brings a background result back there through the queue `on_tick` drains. Handles are `Send + Sync`; `UObjectRef`, `Checked`, `Pinned`, `SubclassOf` and `TWeakObjectPtr` are `Send` but not `Sync`. `GCurrentLibrary` is not thread-local; the last error and the pending script error are.
+Engine objects belong to the game thread, and the Rust types that reach them say so: `UObjectHandle`, `UObjectRef`, `Checked`, `ScriptInterface`, `SubclassOf`, `Pinned` and `OwnedStruct` are neither `Send` nor `Sync`. `TWeakObjectPtr` is `Send` and `Sync` (an index and a serial number) and resolves only on the game thread. The type handles (`UClassHandle`, `FPropertyHandle`, `UFunctionHandle`, `UStructHandle`) stay `Send + Sync`: statics cache them.
+
+Callbacks the engine runs on the game thread (delegates, timers, tick hooks, input, console, details, Slate, automation, `task::spawn`'s `done`) are not `Send` either; their registries keep them in a `GameThreadOnly<T>` (`rusteal-core/src/sync.rs`), which asserts the thread on every access and sends a drop that happens elsewhere back to the game thread.
+
+**The check.** `rusteal-core/build.rs` gives every `ffi_dispatch` wrapper a `#[cfg(debug_assertions)]` thread rule (`thread_rule`): *any thread* for `platform_*`, `logging_*`, the profiling scopes and `lifecycle` track and untrack; *the game thread or a thread-safe scope* for `property_*`, `container_*`, the reflection reads and struct operations, `core_text_*` and the error path; *the game thread* for everything else. `on_game_thread()` is cached per thread (true with no engine, for unit tests); a `#[ufunction(ThreadSafe)]` trampoline opens a `ThreadSafeScope` for its call. A wrong thread panics with the table and function's name. Release builds have no check.
+
+`GCurrentLibrary` is not thread-local; the last error and the pending script error are.
 
 ## Static linking
 

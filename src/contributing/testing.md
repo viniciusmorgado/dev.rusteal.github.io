@@ -60,6 +60,40 @@ So: without it for a real game, with it while working on Rusteal — a change in
 `rusteal-core` shows up in the project you test with on the next `build`,
 with nothing to publish in between.
 
+## The engine harness
+
+What crosses the boundary (properties, functions called by reflection, engine functions, strings, interfaces, soft and weak references, delegates, tasks) is checked in a running game by one command:
+
+```bash
+cargo xtask engine-test
+```
+
+It builds this checkout's CLI, creates `target/engine-test/RustealTests` with `--runtime-path` (or updates it with `setup`), copies the checks from `tests/engine/src` into its game crate, regenerates the bindings and builds the project, then runs it as a game with no window (`-game -nullrhi`; `ProcessEvent` does not run functions in the editor's world). The console command `rusteal_tests.run` runs every check of `tests/engine/src/checks.rs` and writes a `PASS` or `FAIL` line for each to the results file, and the game quits; a run that takes more than ten minutes is killed. It prints the results and fails when one check does. The logs are in `target/engine-test/logs/`.
+
+The project also has a Rust plugin, `RustealProbe`, made by `rusteal plugin new` and filled from `tests/engine/plugin/src`, for the checks of one library using another's classes. After the game, two more runs join the results:
+
+- a Rust commandlet, `-run=VirtualsCommandlet`, whose exit code is checked;
+- the plugin's editor library, `RustealProbeEditor` (from `tests/engine/plugin/editor/src`), whose `rusteal_editor_tests.run` and the Python scripts next to it (`py <file>`) check editor subsystems, utility objects, factories, Slate, the details panel and what editor Python reaches, in the same editor run as the reload;
+- an editor with no window that hot reloads the plugin: `rusteal_tests.reload_prepare` creates a game class whose parent is the plugin's and replaces the plugin's library with a build of `tests/engine/plugin/reload/` (a changed class), `Rusteal.Reload RustealProbe` reloads it, and `rusteal_tests.reload_verify` checks the game's class was rebuilt on the new parent. Its objects are `UObject`s, since the editor's world absorbs actors' `ProcessEvent`.
+
+```bash
+cargo xtask static-test
+```
+
+It packages the project with `rusteal package --static` into `target/engine-test/static-package` and runs the packaged game with the checks that need a game and a plugin linked together (`RUSTEAL_TEST_FILTER`). It takes as long as a package does, cooking included: run it after a change to how libraries are linked.
+
+A check is a function from a `Context` (the game's world) to an `Outcome`, listed in `ALL`; one that waits for the engine returns `Outcome::Pending` and is polled every tick. Reproduce a boundary bug here first, and keep the check once it passes.
+
+## Checking the templates
+
+A change to the code generation or to the runtime's API can break the templates' code. One command compiles all of it:
+
+```bash
+cargo xtask templates-check
+```
+
+It creates a project from every template and variant in `target/engine-test/templates`, and a plugin from every plugin template in one more project, generates their bindings from a reflection dump made with every feature, and runs `cargo check` on their Rust code. The dump is exported once by UBT, from a project with every feature enabled, into `target/engine-test/full-dump`; delete it after changing the engine or the exporter. Name templates to check only those: `cargo xtask templates-check third-person:combat plugin:tour`. Nothing runs in the engine: what the templates do is still checked by playing them.
+
 ## Testing in the editor, headless
 
 What happens in the editor is tested with editor Python, in an editor with no window:

@@ -21,6 +21,8 @@
 - [Errors](./architecture/errors.md)
 - [Hot reload](./architecture/hot_reload.md)
 - [The CLI](./architecture/cli.md)
+- [The launcher](./architecture/launcher.md)
+- [Standalone editor plugins](./architecture/standalone.md)
 
 # Platforms
 
@@ -37,6 +39,7 @@
 
 - [Setting up a checkout](./contributing/environment.md)
 - [Testing a change](./contributing/testing.md)
+- [Formal verification](./contributing/verification.md)
 - [Common tasks](./contributing/tasks.md)
 - [The workspace](./contributing/workspace.md)
 - [Releases and versions](./contributing/releases.md)

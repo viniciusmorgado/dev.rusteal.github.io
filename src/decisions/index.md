@@ -23,7 +23,7 @@ Why Rusteal is the way it is. Each record gives the decision, the reasons, what 
 ### A4. One library for the game, one per Rusteal plugin
 - **Decision.** The game's code is a `cdylib` the Rusteal plugin loads. A Rusteal plugin has its own library, workspace, bindings and C++ module, which registers the library (`RustealRegisterPluginLibrary`, `RustealRegisterPluginLibraryChecked` since 0.9); its C++ symbols are prefixed `<Plugin>_` (`8e66cd7`, `5c1ac09`).
 - **Why.** Gameplay systems become reusable across projects. Classes, functions and pins remember the library that made them, and every call runs with that library current.
-- **Implies.** A plugin is runtime or editor, not both (two plugins otherwise); a Rust class cannot derive from another library's Rust class.
+- **Implies.** A runtime plugin may add an editor library (A19). Since M6 the game's classes may derive from a runtime plugin's (D38, D39).
 
 ### A5. A plugin's classes live in `/Script/<Plugin>`
 - **Why.** Plugins from different authors cannot clash on a class name, and the engine sees them by their module (`0a7bbae`).
@@ -77,6 +77,28 @@ Why Rusteal is the way it is. Each record gives the decision, the reasons, what 
 - **Why.** One archive per library would carry one runtime and one standard library each, whose symbols collide in one executable. A linker keeps an archive's object only when it is referenced: with the Rust code in one object, the reference to `rusteal_static_modules` keeps every `inventory` registration, and the manifest turns a silently missing class into an error at start.
 - **Rejected.** Explicit registration lists written by the game developer (one forgotten type is a missing class); linker flags such as `--whole-archive` (per platform, and not offered by UBT for every platform); patching UBT.
 - **Implies.** Library crates are built as `rlib`s too. A crate with Rust types belongs to one library: shared crates are refused (`246f5ff`, `d2ff6c9`, `2c598a7`).
+
+### A17. The New Project dialog is reached through a launcher plugin that ships no Rust
+- **Decision.** An editor-only engine plugin, `RustealLauncher` (`ue_launcher/`), adds a **Rust** category of templates to the New Project dialog; the Rusteal plugin stays in each project, installed by the CLI.
+- **Why.** The Rusteal plugin carries each project's generated wrappers, so it cannot be installed once in the engine. Fab builds a plugin from its sources with no `cargo` and accepts no executables, and a plugin on Fab cannot depend on another user-made plugin: a small C++ plugin that calls the CLI meets every rule.
+- **Rejected.** A third button next to BLUEPRINT and C++ (two fixed slots, no extension point); replacing the project browser (an override only a loaded module can register).
+- **Implies.** The launcher lives outside `ue_plugin/`, which is copied into every project; the CLI does the work (`a8c2b75`). See [The launcher](../architecture/launcher.md).
+
+### A18. A Rust template is a stub the launcher sets up the first time it opens
+- **Decision.** Each Rust template is a stub project that enables the launcher and names a Rusteal template and variant in `RustealLauncher.json`; when it opens, the launcher runs `rusteal new --in-place` and restarts the editor. Every variant is a template of its own.
+- **Why.** `BuildPlugin` removes `EnabledByDefault`, so a plugin from Fab is not loaded in the project browser and no hook of `TemplateDefs.ini` can run there; the first open is the first moment its code runs. The dialog does not record the variant it shows.
+- **Implies.** Requirements are checked in the launcher's window, not in the dialog; the setup starts on its own, since **Create** in the dialog already asked for it (`7f83c10`, `0803284`).
+
+### A19. A plugin's editor library is a library of its own, named after its module
+- **Decision.** A runtime plugin's `rusteal.toml` may have an `[editor]` section: a second crate in the plugin's workspace, with its own bindings (`Rust/editor-bindings`), C++ module (`<Plugin>Editor`, type `Editor`), symbol prefix (`<Plugin>Editor_`), library file (`librusteal_<Plugin>Editor`) and package (`/Script/<Plugin>Editor`). Its module registers it with `RustealRegisterPluginModuleLibraryChecked(<Plugin>, <Plugin>Editor, ...)`, which finds the plugin by one name and names the library by the other.
+- **Why.** A gameplay system and its editor tools belong in one plugin, as C++ plugins put a runtime and an editor module side by side. Naming every part of a library after its C++ module keeps the two libraries apart everywhere the plugin's name was used, and leaves single-library plugins unchanged.
+- **Implies.** The editor library cannot depend on the runtime crate: in a dynamic build its library would register the runtime crate's types a second time, so `rusteal build` refuses it; it reaches the runtime library's classes through reflection; only the game's bindings get a plugin's classes (D38). The static build leaves the editor library out (`d25f423`, `c0dd537`, `9c2906f`, `e93efbb`).
+
+### A20. An editor plugin for any project carries a copy of the runtime, renamed after it
+- **Decision.** `rusteal plugin package --standalone` copies the Rusteal plugin's C++ into an editor plugin as `<Name>Rusteal` and `<Name>RustealEditor`, every `Rusteal` in names and code becoming `<Name>Rusteal`; the copy looks up the Rusteal types Rust asks for under those names, and the plugin's Rust library, unchanged, is prebuilt into `Source/ThirdParty/RustLibraries/<Platform>/`, without Rust sources.
+- **Why.** Editor tools are meant for any project, Blueprint and C++ ones included, installed in the engine like plugins from Fab, which may not depend on a plugin made by someone else. Several such tools, and a Rusteal project's own plugin, can be loaded in one editor: the renaming keeps their C++ types, classes, symbols and console commands apart.
+- **Rejected.** Rusteal installed in the engine as a shared dependency (Fab refuses it, and every tool would be tied to one Rusteal version); renaming only the types that clash (a missed one shows up only when two tools meet).
+- **Implies.** Only editor plugins: a gameplay plugin goes into a game, so the game is a Rusteal one. The renaming is textual and must keep working: lowercase `rusteal` names the Rust side and stays as it is (`fcadc17`, `f736ee2`, `3564bcf`, `b60839f`). See [Standalone editor plugins](../architecture/standalone.md).
 
 ## Runtime
 
@@ -151,6 +173,10 @@ Why Rusteal is the way it is. Each record gives the decision, the reasons, what 
 - **Why.** The generated bindings crate takes `glam` from the project's workspace while `rusteal-core` takes it from Rusteal's; with two versions they are two crates whose types do not mix, and the bindings stop compiling.
 - **Implies.** Bumping `glam` in the workspace means bumping `GLAM_VERSION` with it. Projects that follow a checkout (`--runtime-path`) are not upgraded: change their `glam` by hand.
 
+### C5. A breaking change ships as a feature, with a note `rusteal upgrade` prints
+- **Decision.** An incompatible API change goes in under a `feat:` subject, never a breaking-change one, until 1.0; its note is added to `MIGRATIONS` (`rusteal-cli/src/upgrade_cmd.rs`) under the version it ships in, and to the game developer's handbook ([Versions and upgrades](https://viniciusmorgado.github.io/game.rusteal.github.io/getting_started/versions.html)). `rusteal upgrade` prints the notes of the versions it crosses before it builds (`150d3ed`).
+- **Why.** The release pipeline turns a breaking-change subject into a major bump, 1.0.0, which is a milestone of its own. Game code cannot be rewritten reliably, but the compiler points at every line once the note says what changed.
+
 ## Code generation
 
 ### D1. The bindings are generated into each game project and committed there
@@ -179,6 +205,270 @@ Why Rusteal is the way it is. Each record gives the decision, the reasons, what 
 - **Decision.** For an out parameter or a return value of struct type, the generated binding allocates `rusteal_core::struct_size_by_name("<Struct>")` bytes, the engine's `GetStructureSize()`, looked up once per call site (`param_helpers::struct_buffer_expr`); the C++ wrapper copies `sizeof(F<Struct>)` into it.
 - **Why.** The buffers were 256 bytes whatever the struct: `FHitResult` is larger, and every sweep (`K2_SetRelativeLocation`, `K2_SetActorLocation`, ...) wrote past the end of the buffer into the heap. macOS's allocator caught it, a crash in `malloc` or a bad pointer later; the other platforms corrupted memory silently. Found with Guard Malloc ([Testing a change](../contributing/testing.md#memory-errors-on-macos)).
 - **Implies.** Never size a buffer the engine writes into from a guess; the codegen test `struct_out_buffers_take_the_engine_size` checks the out parameters.
+
+### D8. Strings cross whole and as UTF-8
+- **Decision.** A string the engine returns is written with `RustealWriteUtf8` (`RustealUtf8.h`): UTF-8, and when it is longer than the buffer the binding gave, kept aside under the buffer's address for `take_pending_utf8`, which `rusteal_core::take_utf8` calls (`78cd7f9`). Strings from Rust are converted from exactly the bytes passed (`RustealUtf8ToFString`, `1dc64d3`).
+- **Why.** The wrappers converted to ANSI and cut at 512 bytes, which could split a character; the reverse conversion read past the end of Rust's bytes. Both found by the engine harness.
+
+### D9. Engine interfaces are named by their `UInterface`, and cross as objects
+- **Decision.** The exporter names an interface by its `UInterface` (`BlendableInterface`), not the native class (`IBlendableInterface`); the wrappers build a `TScriptInterface` with `RustealToScriptInterface` (`RustealInterface.h`), which keeps the object and sets the native pointer when there is one; `FScriptInterface`, the generic `IInterface`, is `UObjectRef<Object>` (`2ffcf6b`).
+- **Why.** The native name matched no class, so every engine function and property with an interface was dropped. The engine's own `TScriptInterface(UObject*)` clears the object when it does not implement the interface natively, which breaks Blueprint-implemented interfaces and `IInterface`.
+
+### D10. Engine soft references cross as paths, weak ones as objects
+- **Decision.** An engine `TSoftObjectPtr<T>` is `SoftObjectRef<T>` and crosses the boundary as its path, a string; `TWeakObjectPtr<T>` is `TWeakObjectPtr<T>` and crosses as the resolved object, through `ObjectPointer` (`d5122d2`).
+- **Why.** As `UObjectRef<T>`, an unloaded soft reference read as null and lost its path, and a function taking one could only be given a loaded object; a weak one read as a strong handle that could dangle.
+- **Implies.** Functions with a soft reference and a container are skipped. Arrays, maps and sets of soft references were `UeArray<UObjectRef<T>>` of the loaded objects; since `610aa47` their elements cross as paths too, `UeArray<SoftObjectRef<T>>`.
+
+### D11. Engine functions with no export macro are left out of every project
+- **Decision.** `ENGINE_UNEXPORTED_FUNCTIONS` (`rusteal-codegen/src/config.rs`) joins every project's blocklist, as Rusteal's internal classes do (`2ffcf6b`, `bad00f6`). Likewise `ENGINE_PLUGIN_PACKAGES` names the plugin of an engine package a project maps without one, such as `GameplayAbilities` (`d61aba5`).
+- **Why.** A project's `[codegen.blocklist]` is written once by `rusteal new` and never migrated: a function newly bound by a fix would fail to link in every existing project.
+
+### D12. A struct the engine gives Rust is constructed in Rust's buffer, and owned
+- **Decision.** Whatever writes an engine struct into a buffer Rust owns (a function's return or out parameter, a property, an array element, a delegate parameter) constructs it there through its `UScriptStruct` (`InitializeStruct`, then `CopyScriptStruct`), and Rust takes it with `OwnedStruct::from_constructed`, which destroys it on drop; `clone()` copies it through the struct too (`5f16556`). A struct passed by reference is used in place, as `&mut OwnedStruct<T>`. The `UScriptStruct` is `TBaseStructure<T>::Get()`, or, for the engine's `NoExportTypes` (`FBox`, `FIntPoint`...), the one found by its path (`RustealFindScriptStruct`), so every reflected struct is an `OwnedStruct` (`984b2c0`).
+- **Why.** The wrappers `memcpy`'d a struct and destroyed the original, leaving Rust with its freed arrays; a copy into zeroed memory was never destroyed; structs with no `StaticStruct` crossed as raw `*const u8`, 190 functions in the default modules, their buffers leaked.
+- **Rejected.** A placement move (`new (Buf) T(MoveTemp(Value))`): some structs' move constructors are not exported (`FImportanceTexture`).
+
+### D13. `FText` is the engine's own, held by Rust
+- **Decision.** `Text` owns a heap `FText` the engine allocated (`new FText`), and crosses as its pointer; arguments take `impl Into<Text>` (`b8a0fe6`).
+- **Why.** Through `FString`, a text lost its namespace and key, so it could not be translated.
+- **Implies.** An `FText` parameter with a default value is a required one; the engine's text gatherer does not read Rust (roadmap, M8).
+
+### D14. An engine function that takes a delegate takes a closure, through a proxy kept by a registry
+- **Decision.** The closure is registered, `make_delegate` binds an `FScriptDelegate` to a new `URustealDelegateProxy`, and the wrapper passes it as `FRustealDelegateArg`, which converts to whatever dynamic delegate type the function takes (`1a44e6d`). Every proxy is kept by an `FGCObject` registry, holds its owner weakly, frees its closure when destroyed, and goes inert when its library unloads (`5542357`, `b7ff413`).
+- **Why.** Nothing referenced the proxies: the first garbage collection destroyed them, and delegates stopped calling Rust, silently. Naming each delegate's C++ type would need the exporter to give it; the conversion operator needs none, and is limited to `FScriptDelegate`-derived types so that overloads taking a static delegate stay unambiguous.
+- **Implies.** For a static function the proxy's owner is the transient package and its world is `GWorld`: it lives until the library unloads.
+
+### D15. A container element crosses in a buffer of its size
+- **Decision.** `ContainerElement` gives each value's `write_size()` and each type's `read_size()`; an element is written into a buffer of its size, and read into one of `read_size()`, read again when the engine reports more (`ReadElement` reports the full size and writes only what fits) (`1a38c3e`).
+- **Why.** Elements went through a fixed 4096-byte stack buffer with no bounds check: a longer string, or a larger struct, wrote past it, and the engine cut strings to it.
+
+### D16. Rust maps and sets are reified with their key and value properties
+- **Decision.** `RustealReifyPropExtra` carries a second element type, `value_prop_type`, with its handles in `value`, a pointer to another extra; a map's key and a set's element are the first one, and get `CPF_HasGetValueTypeHash` (`9a79775`). Keys are the hashable kinds: numbers, objects, classes, `FName` and `String`.
+
+### D17. A Rust function's parameters cross as properties of its parameter buffer
+- **Decision.** `DynamicValue` (`write_to`, `read_from`) reads and writes a value of any type a property holds in any container of it; a function's parameter buffer is one, with each parameter's `FProperty` found once and kept beside its offset. The function thunk, `DynamicCall::set_value`/`value`, Blueprint event dispatch and `#[udelegate]` all use it for strings, texts, names, containers, soft and weak references and interfaces (`4cde66e`, `406c8ea`, `f013a67`). Function parameters take Rust's `Vec`, `HashMap` and `HashSet`, copied, where properties hold `UeArray`, `UeMap` and `UeSet`.
+- **Why.** These types own memory the engine manages: copying their bytes in and out of a call, as scalars are, would share or leak it. The property API that already reads and writes them on objects works on any container.
+- **Rejected.** `UeArray` and friends as parameters (a handle into a buffer that is freed when the call returns).
+
+### D18. A `BlueprintNativeEvent` is dispatched through the engine
+- **Decision.** The macro renames the user's body to `<name>_implementation`, registers it as the event's native function, and gives the method's own name to a dispatcher that calls the event through `ProcessEvent`, so a Rust or Blueprint override runs when there is one (`5d04da6`).
+- **Why.** Calling the Rust body directly would skip the children's overrides, which is the point of the event; C++'s `_Implementation` convention is the one Unreal developers know.
+
+### D19. A Rust class's functions are registered after its Rust parent's
+- **Decision.** The reify registry orders the function blocks by the classes' dependency order, as it does the classes (`378cb32`).
+- **Why.** An `Override` copies its parameters from the parent's function; registered first, it found a function with none.
+
+### D20. A `#[ufunction]` with no receiver is static
+- **Decision.** No `self` means `FUNC_Static`, and the thunk calls `Type::method(args)`; events refuse it. Function metadata (`CallInEditor`, `category`, `meta(...)`, the doc comment as `ToolTip`) goes through `set_function_metadata` (`e7fdc27`).
+- **Why.** It is how Rust spells an associated function, and a function library is a class of them.
+
+### D21. Single-cast and sparse delegates are reified like the multicast one
+- **Decision.** `add_delegate` takes a kind: a single-cast delegate is an `FDelegateProperty` executed with `execute_delegate`; a sparse one an `FMulticastSparseDelegateProperty` whose signature is a `USparseDelegateFunction` naming the class and the delegate, with its offset registered with `FSparseDelegateStorage` when the class is finalized. A single-cast binding is undone only by its own `DelegateBinding` (`unbind_delegate` takes its callback id) (`f013a67`).
+- **Why.** The engine resolves a sparse delegate's owner from that offset, by class name; with none registered it asserts. A binding dropped after another replaced it unbound the newer one.
+- **Implies.** Reified classes are not `CLASS_Native`, so `FSparseDelegateStorage::ResolveSparseDelegate` (used only by C++ accessors) does not find them; the property paths Blueprints and Rust use do not need it.
+
+### D22. An `Override` duplicates the parameters of the event it overrides
+- **Decision.** `CopyParamsFromParentFunction` copies each parameter with `FField::Duplicate`, inner properties included (`ac543d8`).
+- **Why.** It rebuilt them from a list of types and skipped the others (arrays, maps, sets, soft and weak references, interfaces), so the override's layout no longer matched the event's.
+
+### D23. Every attribute refuses the arguments it does not know
+- **Decision.** `#[uclass]`, `#[component]`, `#[uproperty]`, `#[ufunction]`, `#[udelegate]`, `#[uclass_impl]` and `#[class_defaults]` fail with the list of what they take (`c7d30d5`).
+- **Why.** Ignored arguments compiled and did nothing: `Blueprintable` or `Replicated` looked like they worked.
+
+### D24. Async tasks run on a per-library executor, on the game thread
+- **Decision.** `executor.rs` keeps one executor per `ModuleId`, in a game-thread `thread_local!`, polled in `task::tick` after the jobs. Futures are not `Send`; the waker is, and pushes the task's id into a global `READY` map of that module, so an engine callback or a worker thread can wake it. A task has an optional owner, kept as a weak handle and checked before each poll and in `sweep_dead_owners` every tick: a dead owner drops the future at its `.await`. `task::shutdown` drops a module's tasks before the library unloads. `JoinHandle<T>` is a future giving `Option<T>` (`None` once cancelled); dropping it detaches; `AbortHandle` is `Send`, through a global set of aborted ids (`e48b9c6`, `3a7f638`).
+- **Why.** Engine calls belong to the game thread, so the futures that make them do too; requiring `Send` would forbid `UObjectRef`s and the class values game code holds. Owner cancellation is what makes a task safe to write without checks after every `.await`: it never resumes on a destroyed object. A task left running past an unload would poll code that is gone.
+- **Rejected.** `tokio` or another runtime on the game thread (a second loop beside the engine's, and futures crossing threads); polling every task every frame (wakers make an idle task free).
+
+### D25. Timers own their closures through the engine's delegate
+- **Decision.** `timer::set_timer` goes through `RustealTimerApiImpl.cpp`: an `FTimerDelegate::CreateLambda` that holds a shared `FRustealTimerCallback`, whose destructor releases the Rust closure. The engine destroys the delegate when the timer is cleared, when a one-shot timer has fired, or when its world goes away, so the closure is freed with it. `TimerHandle` keeps the context as a weak handle and the engine's `FTimerHandle` as a `u64`; dropping it does not clear the timer, as in Blueprint. `timer::sleep` is a one-shot timer that wakes a future, in world time; `sleep_real` uses the engine's clock. `k2_set_timer_delegate` and `k2_set__for_next_tick_delegate` are hand-written in `manual/timer_ext.rs` on the same path (`ead385a`, `8db536d`).
+- **Why.** The generated `k2_set_timer_delegate` bound a delegate proxy that lived until the library unloaded: each call leaked a proxy and a closure.
+
+### D26. An engine latent function is awaited through a proxy object
+- **Decision.** A function with an `FLatentActionInfo` parameter generates `fn x(..) -> impl Future<Output = Outputs>` without it; the future is a `latent::LatentCall`, started on its first poll. The C++ wrapper creates a `URustealLatentProxy` (`Create`, `MakeLatentInfo`, `LatentDone`, `Cancel`) whose `FLatentActionInfo` points the engine's `ExecutionFunction` at the proxy; the function's outputs live on the heap (`TSharedRef`) until `OnComplete` converts them. Dropping the future calls `RemoveActionsForObject` on the proxy in every world. A latent function with a container parameter is not bound (`71967fa`, `211372b`).
+- **Why.** The engine writes a latent function's outputs when its action finishes, frames after the call returns: a parameter buffer on the stack would be gone by then. The proxy gives every call its own callback target, so concurrent calls never share a UUID.
+
+### D27. An `async #[ufunction]` takes `self` by value and returns nothing
+- **Decision.** The macro registers a hidden `LatentInfo` parameter (the struct found with `reflection_find_struct("LatentActionInfo")`) and the `Latent`/`LatentInfo` metadata; the thunk passes the future to `latent::start_latent_function`, which spawns it owned by the object and adds a `FRustealLatentAction` (`FPendingLatentAction`) that triggers the node's output when the task finishes. An abandoned action (the object destroyed, the node aborted, PIE stopped) cancels the task and triggers nothing. `&self`, `&mut self`, out parameters and a return value are refused; `RustealResult<()>` logs its error as a warning (`c80346d`).
+- **Why.** A future lives across frames while the engine runs other code on the object: a borrow of the class held across an `.await` would alias the one a tick or an overlap takes. `self` by value is the handle; owner cancellation (D24) keeps it valid. A latent node's outputs are copied when the node starts, so a value computed later cannot reach them.
+- **Lesson.** Rust 2021's disjoint closure capture moved only `finish.completed` into an `async move` block that set it, so the struct's `Drop` saw the old value and never fired the node; moving the whole struct first (`let mut finish = finish;`) fixed it.
+
+### D28. A delegate's `next()` binds once and unbinds when it fires
+- **Decision.** Every generated multicast wrapper, and every `#[udelegate]` (`<name>_next()`), has `next()`, a future of the next broadcast's parameters, built on `event::once()`: the binding sends to a `OnceSender` and is removed after its first call; a sender dropped unfired (the object destroyed, the library unloaded) gives the receiver an error (`0cec3f7`). Blueprint async actions use it: factory, `completed().next()`, `activate()`, `.await`.
+- **Why.** The binding starts when `next()` is called, before what makes the delegate fire, so no broadcast is missed; an error instead of a future that never resolves keeps a task from waiting forever.
+
+### D29. Native engine events and HTTP are hand-written shims
+- **Decision.** `RustealEventsApiImpl.cpp` binds a curated list of C++-only delegates (`FCoreDelegates`, `FWorldDelegates`, `FGameModeEvents`, `UPathFollowingComponent::OnRequestFinished`) by a kind number to a lambda holding the library and a callback id, keeps each `FDelegateHandle` per library and removes them in `ForgetLibrary`; Rust exposes them as `NativeEvent<A>` with `add` and `next`. `RustealHttpApiImpl.cpp` sends requests through `FHttpModule`, its completion handing the status, headers and body to the Rust future by the request's id; `Rusteal.Build.cs` adds `HTTP` and `AIModule` on a line of their own (`646aff8`).
+- **Why.** Native delegates are not reflected, so code generation cannot see them; a short, reviewed list is cheaper than a generator for them. The separate `Build.cs` line keeps the standalone vendoring's match on `Add("Projects")`.
+
+### D30. `method(self, Self::x)` makes a method a callback
+- **Decision.** `method.rs`'s `Method<T, Args, Marker>` trait, implemented for `fn(&mut T, ..)` (`ByMut`) and `fn(&T, ..)` (`ByRef`) with up to nine parameters, turns a method into a `Box<dyn FnMut>` that finds the object again from its handle (`RustObject::from_object_handle`, implemented by every `#[uclass]`) before each call, and does nothing once it is gone. `bind_action`, timers and delegates' `add` take it as any closure; `bind_action_by_name` and `add_ufunction` keep the by-name path for functions a Blueprint defines (`9e8aadc`, `7fea2c8`).
+- **Why.** A name is checked when the game runs, and a renamed method failed silently; the compiler checks a method path. The method no longer needs to be a `#[ufunction]`, so input handlers stop showing up in Blueprints.
+- **Implies.** `bind_action` changed its signature: a `feat` with a `rusteal upgrade` note, never a breaking-change commit (decided for M1's API changes as well).
+
+### D31. Engine virtuals reach Rust through generated C++ bases that raise events
+- **Decision.** `rusteal-codegen/src/cpp_gen/shims.rs` turns a list of virtuals, written as their C++ declarations, into `UCLASS(Abstract, Blueprintable)` bases: each virtual calls `Super` and then a `Receive<Name>` BlueprintImplementableEvent (before `Super` with `order = "before"`), and a virtual that returns a value, has out parameters or comes from an interface becomes a BlueprintNativeEvent whose `_Implementation` calls `Super` (or returns a default, for an interface). The Rust class overrides the event as any other (`ba27fc5`, `49a5235`, `89749e8`).
+- **Why.** A Rust class is a `URustealReifiedClass` created at runtime: its objects are the native parent's, with the parent's vtable, so no virtual can be overridden; only UFunctions can. The subsystem bases already worked this way, by hand.
+- **Rejected.** Patching vtables (undefined behaviour, and a different layout per compiler); generating a C++ class per Rust class (every game would need a C++ module, and a changed class could not hot reload).
+
+### D32. The curated bases are generated into the plugin's sources, which a test keeps current
+- **Decision.** `rusteal-codegen/shims/engine.toml` lists them, with sets of virtuals several bases share; `Public/RustealShims.h` and `Private/RustealShims.cpp` are generated from it and versioned. `cargo test -p rusteal-codegen --test shims` fails when they are stale; `-- --ignored regenerate_shims` rewrites them (`f2a62b6`).
+- **Why.** The plugin ships as C++ sources the project builds: UHT must see the bases in the first build, before any code generation runs.
+
+### D33. A project's bases are written before the engine build
+- **Decision.** `[[codegen.shims]]` in the project's `rusteal.toml` becomes `Generated/Shims/RustealProjectShims.{h,cpp}` in the project's copy of the plugin, written by `rusteal build` before step 1 when the steps build C++; their modules go in `Generated/shim_module_deps.txt`, which `Rusteal.Build.cs` reads beside `module_deps.txt`. `rusteal build` without C++ steps warns when the declared bases changed; a plugin's `rusteal.toml` cannot declare any (`e2dbd44`).
+- **Why.** Step 1's UHT export is what the bindings come from: a base generated later would have no bindings until the next full build.
+
+### D34. Only a ThreadSafe Rust function runs off the game thread, on a view without the Rust fields
+- **Decision.** Every `#[ufunction]` thunk first calls `reify_registry::refused_off_game_thread`, which logs once and skips the call on another thread. `#[ufunction(ThreadSafe)]` has no such check, adds `BlueprintThreadSafe`, and takes `<Class>ThreadSafe`, a struct `#[uclass]` generates with the object handle and the `#[uproperty]` accessors only. The C++ side's current library became `thread_local` (`4241d3f`, `e245aaa`).
+- **Why.** The engine runs the animation's thread-safe update, and the Blueprint thread-safe events, on worker threads while the game thread runs other code: a `&mut self` there aliases the game thread's, and the Rust-only fields have no synchronization. The properties are the engine's, which accepts that use, as it does for a Blueprint's thread-safe functions.
+- **Implies.** Engine functions called from a thread-safe function are not checked; the docs say to call only thread-safe ones, as C++ does.
+
+### D35. An inherited subobject's class is chosen before the native constructor runs
+- **Decision.** `#[uclass(subobject_class(Name = Type))]` registers the override through `add_default_subobject` with flag 4; `RustealClassConstructor` merges the chain's overrides (the most derived wins) and calls `FObjectInitializer::SetDefaultSubobjectClass` for each before calling the native parent's constructor (`3a89cb0`).
+- **Why.** It is where C++ does it, in the constructor's initializer list: the parent creates the subobject in its constructor, with the class the initializer holds.
+
+### D36. A tick function of its own is a C++ FTickFunction owned by the plugin
+- **Decision.** `RustealTickApiImpl.cpp` keeps an `FRustealTickFunction` per closure, registered on the world's persistent level in the group asked for; its prerequisites are actors', components' or another one's. A destroyed target, `remove`, a cleaned-up world and an unloaded library remove it; removal during a tick only marks it, and a core ticker deletes it afterwards (`5f7abf6`).
+- **Why.** A tick function cannot be deleted while the tick task graph runs it, and its object can be destroyed by the frame it ticks in.
+
+### D37. A thunk's locals cannot collide with a function's parameters
+- **Decision.** The arguments a thunk reads are bound as `__rusteal_arg_<name>` (`0c498ae`).
+- **Why.** A parameter named `params` or `obj` shadowed the thunk's own buffer and object, and a `Main(const FString& Params)` override did not compile.
+
+### D38. The game's bindings read a plugin's Rust classes from its sources
+- **Decision.** `rusteal-codegen/src/plugin_bindings.rs` parses each runtime plugin's crate with `syn`, following `mod` declarations from `lib.rs` (which gives the `module_path!()` the macro hashes into the type id), and writes `bindings::plugins::<plugin>` into the game's bindings: a type per `#[uclass]` with `UeClass` (the original `RUST_TYPE_ID`, the class found by path each time), `HasParent` and `Inherits` from a type index the full generation writes to `Intermediate/Rusteal/bindings_types.json`, and an `<Class>Ext` trait whose properties go through `reflected::PropertySlot` and whose functions are `DynamicCall`s returning `RustealResult`. `rusteal build` refreshes it from the sources before building Rust. The naming rules moved to `rusteal-ue-flags`, shared by the macros and the generator (`15bb33e`, `d216a90`, `0b56455`).
+- **Why.** The UHT export cannot see classes created at runtime, and a game crate depending on the plugin crate would link a second copy of its classes and of `rusteal-core`, whose Rust data lives in the plugin's copy. The engine's reflection is what both libraries share.
+- **Rejected.** A shared `rusteal-core` library for every Rust library (a much larger change to the library model); an export from the compiled plugin (the pipeline would build the plugin before generating the game's bindings).
+- **Implies.** The game does not see Rust-only fields, the plugin's structs, enums and delegates, or items the parser does not follow (`#[path]` modules, other macros).
+
+### D39. A class whose parent is in another library waits for that library
+- **Decision.** `register_module` sets apart the classes whose parent is a Rust class of another library (a non-zero type id that is not the module's), and those that depend on one of them through `depends_on` (parent, components, property classes, which the macro now lists); they are created, in dependency order, as soon as their parent exists: at once when it does, or when `retry_deferred_classes`, called in every library after each one registers, finds it. What still waits after `OnPostEngineInit` is an error (`9782178`, `393465a`, `12ff628`).
+- **Why.** The game's library registers first, in the Rusteal module's startup, and the plugins' in their modules' after it; reordering every library would change when every game class exists, for every project.
+
+### D40. A reload reloads the libraries whose classes derived from a changed class, in one reinstancing
+- **Decision.** After a library loads again, `ReloadLibrary` looks for live reified classes with a retired class in their chain, and reloads their libraries before reinstancing, so the engine reinstances parents and children together (`f9eb95d`).
+- **Why.** Reinstanced alone, the child kept the retired parent, whose functions point at the unloaded library, and the editor recompiled its stub Blueprint as a child of the replaced class and asserted.
+- **Lesson.** On Linux the hot copy was a hard link; a library reloaded unchanged (the game, in that chain) linked the same inode as the instance still mapped, and `dlopen` handed back that instance with its old statics. The copy is real when the source is the file loaded last.
+
+### D41. A call into a function whose library is gone is reported
+- **Decision.** `execCallRustFunction` warns when the function's library is no longer loaded, instead of returning without a word (`ac046fc`).
+- **Lesson.** In an editor world, `ProcessEvent` on an actor is absorbed for functions that are not `CallInEditor`: a test of Rust calls in the editor uses a `UObject`.
+
+### D42. Slate is built from Rust through a registry of widgets
+- **Decision.** `RustealSlateApiImpl.cpp` creates a widget of a kind from a `RustealSlateProps` (texts, callback ids, numbers) and keeps its `TSharedRef<SWidget>` under an id; `add_child` places one in another's slot; `slate::Widget` releases its id when dropped, so a widget lives as long as its parent or tab holds it. Attributes and events are lambdas holding a shared callback that releases the Rust closure with the widget, as timers do (D25); a text attribute's closure writes its string through `slate_write_text`. Nomad tabs call a Rust builder that hands its widget over. A library's tabs close and its closures go inert when it unloads (`bb49534`, `9c862f9`).
+- **Why.** Slate is C++ templates (`SNew`, `FArguments`), which the reflection does not see and code generation cannot bind; a few common widgets cover editor tools' panels, and each new one is a case of the switch.
+- **Rejected.** UMG from Rust for editor UI (a Widget Blueprint per tool); exposing `SNew` generically (every argument is a template).
+
+### D43. The details panel's functions are in the runtime module, in editor builds only
+- **Decision.** The Details API lives in `RustealDetailsApiImpl.cpp` of the Rusteal module, which depends on `PropertyEditor` when the target builds the editor; game builds have stubs that fail with "in the editor only". An `IDetailCustomization` calls the Rust builder with an id for its `IDetailLayoutBuilder`, valid while it runs; `details::view` adopts an `IDetailsView` as a Slate widget (`c8dee27`, `c87f07e`).
+- **Why.** The API table, the widget registry and the calls into the right library are the runtime module's; a second table filled by the editor module would duplicate them.
+
+### D44. A factory creates the object, and Rust fills it
+- **Decision.** `URustealFactory` (RustealEditor) creates the new object in `FactoryCreateNew` and `FactoryCreateFile`, with the outer, name and flags the editor passes, then raises `ReceiveCreatedNew` or `ReceiveImportFile` (`e7d1beb`).
+- **Why.** `EObjectFlags` and `FFeedbackContext*` are not reflected, so the generated bases (D31) cannot pass them to an event, and creating the object is the same for every factory.
+
+### D45. The harness's plugin has an editor library, checked in an editor without a window
+- **Decision.** `RustealProbe` gets `RustealProbeEditor` (`rusteal plugin editor`), filled from `tests/engine/plugin/editor/src`; its console command `rusteal_editor_tests.run`, and Python scripts run with `py`, append their results in the same editor run as the reload (`b76902f`, `44cf39c`, `43a2e94`).
+- **Lesson.** Editor Python reaches a Rust class's properties by either name and its functions by `call_method` with the Unreal name only, as for Blueprint classes: the check holds that.
+
+### D46. Gameplay tags declared in Rust are native tags
+- **Decision.** `gameplay_tags::declare` calls `UGameplayTagsManager::AddNativeGameplayTag`, after refusing names with an empty part, which the engine's own check lets through; the bindings' `declare_gameplay_tag` and `gameplay_tag` give an `FGameplayTag` by name, the second only for a tag the manager knows (`8e1b152`, `3034d17`).
+- **Why.** Since 5.8 the manager takes native tags after startup and adds their parents, so the hierarchy matches; a tag built by name alone (as before) matched nothing above it.
+
+### D47. Bases of optional engine plugins come with their binding feature
+- **Decision.** `rusteal-codegen/shims/<feature>.toml` holds the curated bases of a feature whose engine plugin is optional (`gameplay_abilities.toml`: `RustealAttributeSet`); `project_shim_specs` puts them before the project's `[[codegen.shims]]`, in `RustealProjectShims`, when the project binds the feature (`49cc79d`).
+- **Why.** The Rusteal module cannot depend on GameplayAbilities for every project; the project bases already build in the project's copy of the plugin, with the plugin dependency the feature adds.
+
+### D48. A base maps the parameters a Blueprint event cannot take, and has static functions
+- **Decision.** A virtual can declare `event_params` and the `event_args` that fill them, and a `default` body for its `_Implementation`; a base has `functions`, static `UFUNCTION`s with a C++ body. The game's bindings reach the project bases' functions: their header is under `Generated/Shims`, which the game's wrappers include by a relative path; a plugin's library still does not see them (`320a4cc`, `9d31464`).
+- **Why.** `FGameplayEffectModCallbackData` is not a `USTRUCT`: the event takes its spec, evaluated data and target. `FGameplayAttribute` holds a `TFieldPath`, which the bindings cannot write, so `AttributeOf` builds it in C++.
+
+### D49. Out parameters of an event raised by `ProcessEvent` are moved back
+- **Decision.** In `execCallRustFunction`, when `ProcessEvent` called the function, non-const out parameters and the return value go back to the caller's memory with a bitwise move, and const references do not go back at all; a call from the Blueprint VM still copies (`54c3f38`).
+- **Why.** `ProcessEvent` builds the frame with a `Memcpy` of the caller's parameters and never destroys out parameters: the frame's copy of a struct shares its heap data with the caller's, and copying it back with `operator=` destroyed what both pointed at. `FGameplayEffectSpec`, passed by const reference to `PostGameplayEffectExecute`, crashed the game.
+
+### D50. The network harness runs a dedicated server and two clients in one editor, without a window
+- **Decision.** `cargo xtask engine-test` starts an editor with `-nullrhi`, writes the Play In Editor settings by reflection (`rusteal_tests.net_configure_pie`: Play As Client, one process, two players) and requests a session from Python; a Rust world subsystem in each PIE world runs the checks, which share their state through statics since every world lives in the same process, and a Slate post-tick callback quits once the results are written. The checks run three times: by default, with push model, and with Iris (`4d486b4`, `35a66bb`).
+- **Why.** One editor at a time and no window on the maintainer's desktop; three processes connecting through sockets would be two more editors.
+- **Lesson.** `QUIT_EDITOR` from a PIE world's tick ends play inside that tick and asserts; the Iris plugin, `-UseIrisReplication=1` and `net.SubObjects.DefaultUseSubObjectReplicationList` from the command line (not `ExecCmds`, which runs after the map's actors exist) are what turn Iris on.
+
+### D51. Rust properties replicate through the Blueprint path
+- **Decision.** `reify_set_property_replication` sets `CPF_Net`, `CPF_RepNotify`, `RepNotifyFunc` and the property's Blueprint replication condition; finalizing the class counts `NumReplicatedProperties`, which `GetLifetimeBlueprintReplicationList` walks for actors and components. The generated setters of replicated properties, and the accessors of replicated containers, mark the property dirty for push model (`6596c4a`, `116c0ee`, `ccc55a8`).
+- **Why.** Reified classes are `UBlueprintGeneratedClass`es: the engine already replicates their properties when they carry the flags a Blueprint compiler sets.
+
+### D52. A remote function's method asks the engine; its body is the implementation
+- **Decision.** `#[ufunction(Server | Client | NetMulticast, Reliable | Unreliable)]` registers a native net function; the macro renames the body to `<name>_implementation`, which the thunk calls, and replaces the method with a `&self` dispatcher that calls the function through `ProcessEvent`, as UHT's `Foo` and `Foo_Implementation`. `WithValidation = f` calls `f` with clones of the parameters in the thunk and reports a refusal with `RPC_ValidateFailed` (`d05f4c7`, `39d98e3`).
+- **Why.** Only `ProcessEvent` routes a call by the function's flags and the object's role; a direct call of the body would run it on the caller's machine.
+- **Implies.** Reliable or Unreliable is required, as UHT requires it. Under Iris a refused call is dropped without closing the connection, as for C++.
+
+### D53. Engine remote functions are bound where the engine exports them
+- **Decision.** The exporter keeps `Server` functions and drops a net function unless it is `RequiredAPI` or its class is (`3822894`).
+- **Why.** UHT defines a remote function's caller in the module's generated code without the API macro of a `MinimalAPI` class, so the wrapper did not link (`ANoPawnPlayerController`). Binding them also showed that unsigned and 16-bit parameters never compiled: they were passed without a cast to their FFI type (`fccfbe1`).
+
+### D54. Replicated subobjects derive from a C++ base
+- **Decision.** `URustealReplicatedObject` (`REPLICATED_BASE_CLASS`, `IsSupportedForNetworking`, the Blueprint replication list, remote functions forwarded to the outer actor's net driver); `net::add_replicated_subobject` sets the actor's `bReplicateUsingRegisteredSubObjectList` by reflection and registers the object (`9fae020`).
+- **Why.** A plain `UObject` neither replicates nor reports its replicated properties, and push model needs the id storage the macro adds; the actor's flag is protected.
+
+### D55. `rusteal package --server` refuses an installed engine
+- **Decision.** `--server` writes `Source/<Project>Server.Target.cs` when missing and adds `-server -noclient -serverplatform -serverconfig` to `BuildCookRun`; an engine with `Engine/Build/InstalledBuild.txt` is refused before anything builds (`09b226b`).
+- **Why.** Installed engines have no server target; the failure would come at the end of a long build.
+- **Implies.** Not validated yet: it needs an engine built from source.
+
+### D56. Rust profiling goes through the engine's profilers, with names registered once
+- **Decision.** `trace_scope!` caches the CPU event type of `FCpuProfilerTrace::OutputEventType` per call site and opens and closes `OutputBeginEvent`/`OutputEndEvent` in a guard; `stat_scope!` caches a dynamic stat of a `Rusteal` group and keeps a heap `FScopeCycleCounter` while it runs; `profiling::memory_tag` keeps a heap `FLLMScope`. The guards are not `Send`. The harness records the game with `-trace=cpu` and exports the scope's events with Unreal Insights `-NoUI -AutoQuit` (`afe7798`, `b904052`).
+- **Why.** Insights, `stat` and LLM are where Unreal developers look; a Rust profiler of its own would not show beside the engine's events.
+
+### D57. Rust automation tests are dynamic `FAutomationTestBase`s
+- **Decision.** `automation::register_test` makes an `FRustealAutomationTest` per name, owned per library and dropped by `ForgetLibrary`, whose `RunTest` calls the Rust closure; `add_error` reaches the running test through `FAutomationTestFramework::GetCurrentTest` (`18f47c4`, `db3e685`).
+- **Why.** The Session Frontend, `Automation RunTests` and the JSON report then treat them as C++ tests, which is what build machines already run.
+
+### D58. `loctext!` reaches the gather through a generated header
+- **Decision.** `rusteal build` reads the `loctext!` calls of the game's and the runtime plugins' crates (a token scan, so calls inside other macros count) and writes them as `NSLOCTEXT` lines to `Source/<Project>/RustealText.h`, which nothing includes; the macro takes literals only (`9433106`, `06338db`).
+- **Why.** `GatherTextFromSource` reads C++ by its macros; teaching it Rust would mean an engine plugin, while a header in `Source` is gathered by the default configuration.
+- **Implies.** A plugin packaged on its own carries no gathered text of its Rust: its project gathers it.
+
+### D59. Debugger configurations hold no machine paths
+- **Decision.** The `vscode` feature attaches CodeLLDB (or the Visual Studio debugger) to the running editor and starts it through `cargo rusteal watch`, instead of launching the editor binary (`c71aeba`).
+- **Why.** E6: the engine path is per machine. Packaged symbols come from Cargo's `CARGO_PROFILE_RELEASE_DEBUG`, which needs no option of Rusteal.
+- **Implies.** No debugger is installed on the maintainer's Linux machine, so no breakpoint is checked automatically yet.
+
+### D60. No zero-copy views of engine arrays in safe code
+- **Decision.** `UeArray` keeps copies (`to_vec`, `set_all`, `bulk_iter`, one `memcpy` on the engine side) and no slice over the `TArray`'s memory; the harness measures the costs, which the gamedev handbook publishes (`74ecbc6`).
+- **Why.** Any engine call made while a slice lives could reallocate the array, and game code is safe Rust (I7).
+- **Lesson.** The bulk copy of `i32` costs about 4.6 ns per element each way, spent converting element by element on the Rust side: a `memcpy` there is a later optimization.
+
+### D61. Object references are the engine's index and serial number
+- **Decision.** `UObjectRef`, `TWeakObjectPtr`, `Pinned`, method and delegate owners, `NativeEvent` and executor tasks keep an `FWeakObjectHandle` (`{object_index, object_serial_number}`, the bytes of an `FWeakObjectPtr`), never an address, and resolve it through `FWeakObjectPtr::Get` when used. Contract tests assert the handle's size and alignment against `FWeakObjectPtr` (`b479aeb`).
+- **Why.** `::IsValid` on a raw pointer reads freed memory once the object is collected, and the engine reuses addresses: a method bound to a destroyed actor ran on the next actor allocated there. The serial number changes whenever a slot of `GUObjectArray` is reused.
+- **Implies.** One resolution per `checked()`. Wrappers still return pointers, made weak on the Rust side with one more call.
+
+### D62. `#[uclass]` refuses object references outside `#[uproperty]`
+- **Decision.** A Rust-only field whose type names `UObjectRef`, `Checked` or `ScriptInterface`, at any depth, is a compile error that names the three ways to keep an object: `#[uproperty]`, `TWeakObjectPtr`, `Pinned` (`56414b8`).
+- **Why.** The garbage collector sees properties only; a private reference silently stops keeping its object. The templates had ten such fields.
+- **Rejected.** Reporting private fields to the collector: it needs a schema of Rust types the engine cannot read, and hides the choice between owning and observing that C++ makes with `UPROPERTY` and `TWeakObjectPtr`.
+
+### D63. Object references stay on the game thread; debug builds check every engine call
+- **Decision.** Object references and `UObjectHandle` are not `Send`; game-thread callbacks are not required to be `Send` and live in `GameThreadOnly` cells. `rusteal-core/build.rs` gives every `ffi_dispatch` wrapper a thread rule, asserted under `debug_assertions`; a `#[ufunction(ThreadSafe)]` call opens a thread-safe scope for property, container and struct access (`6318409`).
+- **Why.** The engine's objects are not thread-safe and C++ only finds a race at run time. One rule at the dispatch catches every caller, including generated bindings, with a cached thread-local check.
+- **Implies.** `TWeakObjectPtr` is the way to carry an object to a worker and back. Release builds trust the types.
+
+### D64. A `UObjectRef` lives as long as the call that gave it
+- **Decision.** `UObjectRef<'a, T>`, `Checked<'a, T>` and `ScriptInterface<'a, I>` carry the lifetime of the engine call that handed them out. `checked()` returns `Checked<'a>` without borrowing; generated traits are `<Class>Ext<'a>` on `Checked<'a, Class>` and return objects with the same `'a`; static functions without an object parameter take `&'a GameThread`. `from_obj` returns a `RustRef<'a, T>` guard; setters take `&self`; delegates gain `add_method`/`bind_method`, which find their object again on each call; `next()`, `NativeEvent` and `async` functions use `TWeakObjectPtr` (`74ef3ef`).
+- **Why.** With D61 a stale reference is a clean error, but nothing stopped one from being kept where the collector cannot see it (a closure, a task, a static). The lifetime makes that a compile error, which is the point of using Rust over C++.
+- **Rejected.** `'static` references with run-time checks only: memory-safe, but they keep the C++ habit of storing pointers the collector ignores.
+- **Implies.** A `'static` reference needs a deliberate escape (`Box::leak` of a `GameThread`, `unsafe from_handle`). `SubclassOf` has no lifetime: classes are kept in statics and properties, and an unloaded class still resolves to an error.
+
+### D65. Pins and owned structs are references of one `FGCObject`
+- **Decision.** `FRustealReferenceCollector` keeps a slot per `Pinned` (a `TObjectPtr` and its library) and the memory of each `OwnedStruct` whose struct has object members, and reports them in `AddReferencedObjects` (`AddPropertyReferencesWithStructARO` for structs). The lifecycle table is `pin`, `unpin`, `track_struct`, `untrack_struct`; `notify_pinned_destroyed` is gone (`175a9cb`).
+- **Why.** `AddToRoot` is one flag per object: two `Pinned` shared it, and dropping one could unroot an object the engine rooted itself. A struct held in Rust memory was invisible to the collector.
+- **Implies.** An object destroyed explicitly is collected even while pinned; the `Pinned` reads it as gone through D61. Slots are freed when their library unloads.
+
+### D66. `shared-std` gives way to an engine's own Rust personality
+- **Decision.** `rusteal package --static --feature shared-std` takes `rust_eh_personality` out of the way in the installed static library, by changing one field of its symbol entries in place (`rusteal-cli/src/shared_std.rs`): on ELF (Linux, Android) the binding becomes weak; on Mach-O (macOS, iOS, each architecture of a universal library) the definition gets `N_WEAK_DEF`; on COFF (Windows, bigobj included) the storage class becomes static. Off by default.
+- **Why.** Fat LTO compiles std into the static library's one object and hides it, but the unwinding personality stays global. A fork of the engine that links its own Rust static library (`unreal-sys`) defines it too, and the game's link fails with a duplicate symbol. Sharing the engine's whole std would need its exact toolchain and its panic strategy (`panic = "abort"`), and would collide on the allocator shims; the personality only reads the LSDA the compiler wrote, so either copy serves both halves, and each half's `panic_unwind` still checks that a panic is its own.
+- **Why COFF differs.** COFF has no weak definitions, and the linker reports a COMDAT next to a plain definition as a duplicate; a static symbol keeps the object's own references and leaves the name to the engine. On Windows Rust unwinds through `__CxxFrameHandler3`, and `rust_eh_personality` is a stub that is never called, so each half keeping its own is harmless.
+- **Implies.** The engine from Epic links no Rust and needs nothing. The change was checked with LLD on real libraries for Linux x64, Android arm64, macOS x64 and arm64, iOS arm64 and Windows x64 and arm64: each fails with a duplicate symbol before and links after; the packaged game runs on Linux with the fork. The editor is unaffected: each library is a `cdylib` that exports only its own symbols.
 
 ## CLI
 
@@ -232,6 +522,27 @@ Why Rusteal is the way it is. Each record gives the decision, the reasons, what 
 ### E13. Library crates are plain Rust libraries; `rusteal build` makes the dynamic library
 - **Decision.** A game's or plugin's crate declares no `crate-type`; step 4 runs `cargo rustc --lib --crate-type cdylib`, and `rusteal package --static` rewrites an older `crate-type` with `cdylib` to `["rlib"]`.
 - **Why.** A dependency's `cdylib` is linked as a dynamic library for whatever target the static build compiles for: for Linux ARM64 or a console, with a linker the host does not have, and the build failed. `--crate-type` builds the editor's library from the same crate, including in projects that still declare one (`a604d23`).
+### E14. `rusteal new --in-place` fills a stub, and only success removes its marker
+- **Decision.** With `--in-place`, `rusteal new` sets up the project in the stub's own directory: it keeps what the open editor holds (`Saved/`, `Intermediate/`, `DerivedDataCache/`), clears the stub and anything a stopped conversion left, refuses anything else, and removes the marker after the build. `--engine` gives the engine without the configuration file, which a process without a terminal cannot be asked for.
+- **Why.** The editor that runs the CLI has the project open, and a setup can fail or be canceled; with the marker kept and the stub's `.uproject` restored by the launcher, opening the project again retries it (`fd4ed8f`, `94e74cd`).
+
+### E15. `rusteal launcher install` builds the launcher with the engine's `BuildPlugin`
+- **Decision.** The CLI embeds the launcher's sources (`LAUNCHER_FILES`), builds them with the engine's `BuildPlugin` and installs the result in `Engine/Plugins/Marketplace/RustealLauncher`.
+- **Why.** Linux has no Epic Games Launcher and its editor cannot install Fab plugins; building with the user's own engine needs no binaries in the repository and no change to the release workflows (`2e22292`).
+
+### E16. A precompiled plugin is built by the engine's `BuildPlugin`, with the project's Rusteal plugin as its dependency
+- **Decision.** `rusteal plugin package --precompiled` builds the plugin's Rust libraries with the release profile, then runs `BuildPlugin` with `-Dependencies=<project>/Plugins/Rusteal/Rusteal.uplugin`, which copies the Rusteal plugin into the host project `BuildPlugin` makes. The plugin's `Config/FilterPlugin.ini` adds the Rust libraries, the Rust workspace without `target/` and `rusteal.toml` to the package. A plugin whose `.uplugin` says `"Installed": true` is left alone by `rusteal build` and `rusteal generate`; `rusteal plugin merge` joins the per-platform files of packages made on several platforms.
+- **Why.** `BuildPlugin` builds a plugin in a project of its own, where the Rusteal plugin it depends on was missing; passing it as a dependency needs no Rusteal installed in the engine. The sources still travel, since a static build compiles the plugin's crates into the game's archive.
+- **Implies.** A precompiled plugin works only in projects at the same Rusteal and engine version, as any plugin does. Each platform's binaries are built on that platform (`f559969`, `ef88af5`).
+
+### E17. `rusteal build` goes on when the code generated before no longer compiles
+- **Decision.** When the first UBT pass fails and the reflection dump was written, the build prints so, generates the code again and builds it in step 3; it stops at once only when it was asked for step 1 alone (`23d570d`).
+- **Why.** After a CLI update, the first pass compiles the wrappers an older version generated; when a fix changes them they may not compile, and the build stopped before the step that regenerates them, leaving the project stuck.
+
+### E18. `rusteal build` exports the reflection again when the bindings need a new engine plugin
+- **Decision.** When step 2 adds plugins to a descriptor (a feature whose modules come from an engine plugin: `state-tree`, `niagara`, `chaos-vehicles`...), it touches `RustealGeneratorDummy.h`, runs step 1 again and generates from the new dump (`bad00f6`).
+- **Why.** UHT runs only when a project header changes: enabling the plugin did not make it run, so the dump never had the plugin's types and the feature's bindings stayed empty, build after build.
+
 ## Hot reload
 
 ### F1. A reload loads a numbered link or copy of the deployed library
@@ -323,6 +634,10 @@ Why Rusteal is the way it is. Each record gives the decision, the reasons, what 
 - **Why.** A dependency with a RustSec vulnerability advisory must never reach a release; `Cargo.lock` is not versioned (H2), so the audit checks what a build resolves that day.
 - **Implies.** Only vulnerabilities fail; unmaintained and yanked crates warn. A new advisory can turn a pull request red with no change of its own: update or replace the dependency. `cargo-audit` comes prebuilt through `taiki-e/install-action`, pinned to a commit.
 
+### H11. The launcher has its own version
+- **Decision.** `RustealLauncher.uplugin` starts at `0.1.0` and is not bumped by the release workflows; the launcher accepts any CLI whose `rusteal new` has `--in-place` and `--engine`.
+- **Why.** Every Fab submission goes through review: a lockstep version would force one for each Rusteal release, while the launcher changes rarely.
+
 ## Process
 
 ### I1. The engine's templates set the priorities
@@ -352,6 +667,15 @@ Why Rusteal is the way it is. Each record gives the decision, the reasons, what 
 ### I6. The README presents, the handbooks document
 - **Decision.** The README keeps the presentation (what Rusteal is, why use it, UE6, acknowledgments, license) and points to the two handbooks; using Rusteal is documented in the game developer's handbook, working on it in this one.
 - **Why.** Nobody reads a 1600-line README; each handbook serves one reader.
+
+### I8. The launcher's sources carry a copyright header
+- **Decision.** Each `.cpp` and `.h` of `ue_launcher/` starts with `// Copyright <year> Vinicius Donatto Morgado.`
+- **Why.** Fab requires a copyright notice with the publisher's name in every source file; it is the one exception to the rule of no comments in the sources (I3).
+
+### I9. Formal verification only where tests cannot reach every input
+- **Decision.** [Verus](https://github.com/verus-lang/verus) proves the few pure-Rust parts that parse untrusted bytes or trust a length the engine reports, and nothing else. Those are `shared-std`'s rewriting of static libraries (`rusteal-cli/src/shared_std.rs`, ELF first) and then the container and string buffers in `rusteal-core`. The shipped crates never depend on Verus, and verification runs apart from the build and the CI checks ([Formal verification](../contributing/verification.md)).
+- **Why.** In these parts a mistake corrupts a binary or memory silently, and their inputs cannot be enumerated, so a proof covers what no test can. Verifying more was rejected: the risk in a binding layer sits mostly on the C++ side of the boundary, where Verus cannot see, and Rust's types already check object lifetimes and the game thread (D61–D65). Verus also pins its own Rust toolchain, changes every week and supports a subset of Rust, so each proof is a cost to keep up.
+- **Implies.** A part joins only when its mistakes cannot surface as a failing test, its inputs cannot be enumerated, and no engine is in the loop; adding one updates this record. The proven code is the shipped code, never a copy kept beside it. Game developers never need Verus (I7).
 
 ## Recording a decision
 
